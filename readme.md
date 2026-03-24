@@ -32,7 +32,7 @@ The system works perfectly for both local direct-run and LAN distributed archite
 
 ## Project Structure
 ```text
-cv_capture_detect_v12/
+cv_capture_detect/
 ├── src/
 │   ├── capture/
 │   │   └── capture_frame.py    # DXCAM wrapper, supports Video Mode non-blocking capture
@@ -110,7 +110,7 @@ If you experience high latency or frame drops, check the console logs:
 
 ## 项目结构
 ```text
-cv_capture_detect_v12/
+cv_capture_detect/
 ├── src/
 │   ├── capture/
 │   │   └── capture_frame.py    # DXCAM 封装，支持 Video Mode 非阻塞采集
