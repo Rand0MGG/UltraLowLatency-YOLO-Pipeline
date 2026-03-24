@@ -1,0 +1,24 @@
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 环境与IDE
+.env
+.venv
+env/
+venv/
+.idea/
+.vscode/
+
+# 项目运行时生成的文件
+debug/
+*.log
+*.jsonl
+
+# 模型权重 (YOLO weights)
+*.pt
+*.engine
+*.onnx
+
+debug/
