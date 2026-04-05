@@ -55,10 +55,8 @@ def _import_frame_capturer():
     _setup_import_path()
 
     candidates = [
-        ("capture.capture_frame", "FrameCapturer"),
-        ("src.capture.capture_frame", "FrameCapturer"),
-        ("capture_frame", "FrameCapturer"),
-        ("src.capture_frame", "FrameCapturer"),
+        ("cvcap.adapters.capture.dxcam_capture", "FrameCapturer"),
+        ("src.cvcap.adapters.capture.dxcam_capture", "FrameCapturer"),
     ]
 
     last_err = None

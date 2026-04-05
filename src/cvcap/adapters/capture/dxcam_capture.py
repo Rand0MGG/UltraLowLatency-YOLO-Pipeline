@@ -1,5 +1,3 @@
-# src/capture/capture_frame.py
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import ctypes
@@ -7,21 +5,40 @@ import platform
 import threading
 import time
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import cv2
-import numpy as np
 import dxcam
+import numpy as np
+
+from cvcap.core.errors import CaptureAccessError
+
+try:
+    from dxcam.dxcam import DXCamera as _DXCamera
+
+    def _safe_dxcamera_del(self):
+        try:
+            if hasattr(self, "is_capturing"):
+                self.release()
+        except Exception:
+            pass
+
+    _DXCamera.__del__ = _safe_dxcamera_del
+except Exception:
+    pass
+
 
 @dataclass(frozen=True)
 class FrameMetadata:
     timestamp_ns: int
     monitor_rect: Tuple[int, int, int, int]
 
+
 class _TimerResolutionEnabler:
     _lock = threading.Lock()
     _ref_count = 0
     _enabled = False
+
     def __init__(self, period_ms: int = 1) -> None:
         self._period_ms = int(period_ms)
         self._is_windows = platform.system().lower().startswith("win")
@@ -31,15 +48,20 @@ class _TimerResolutionEnabler:
                 self._winmm = ctypes.WinDLL("winmm")
             except Exception:
                 self._winmm = None
+
     def enable(self) -> None:
-        if not self._is_windows or self._winmm is None: return
+        if not self._is_windows or self._winmm is None:
+            return
         with self.__class__._lock:
             self.__class__._ref_count += 1
-            if self.__class__._enabled: return
+            if self.__class__._enabled:
+                return
             self._winmm.timeBeginPeriod(self._period_ms)
             self.__class__._enabled = True
+
     def disable(self) -> None:
-        if not self._is_windows or self._winmm is None: return
+        if not self._is_windows or self._winmm is None:
+            return
         with self.__class__._lock:
             if self.__class__._ref_count <= 0:
                 self.__class__._ref_count = 0
@@ -49,32 +71,31 @@ class _TimerResolutionEnabler:
                 self._winmm.timeEndPeriod(self._period_ms)
                 self.__class__._enabled = False
 
+
 class FrameCapturer:
-    def __init__(self, monitor_index: int = 1, capture_hz: float = 60.0, region: Optional[Tuple[int, int, int, int]] = None) -> None:
+    def __init__(
+        self,
+        monitor_index: int = 1,
+        capture_hz: float = 60.0,
+        region: Optional[Tuple[int, int, int, int]] = None,
+    ) -> None:
         self.monitor_index = int(monitor_index)
         self.capture_hz = float(capture_hz)
-        self.region = region # [新增] 保存区域参数
-
+        self.region = region
         self._lock = threading.Lock()
-        output_idx = max(0, self.monitor_index - 1)
-        self._camera = dxcam.create(output_idx=output_idx)
         self._started = False
         self._video_mode = True
         self._last_frame_bgr: np.ndarray | None = None
-        
-        # [修改] monitor_rect 逻辑
-        full_rect = self._detect_monitor_rect()
-        if self.region is not None:
-            # 如果是区域模式，元数据里的尺寸应该是小图的宽高
-            l, t, r, b = self.region
-            w, h = r - l, b - t
-            self._monitor_rect = (0, 0, w, h)
-        else:
-            self._monitor_rect = full_rect
-
         self._timer_res = _TimerResolutionEnabler(period_ms=1)
         self._none_retry_times = 2
         self._none_retry_sleep_s = 0.001
+        self._camera = self._create_camera()
+        full_rect = self._detect_monitor_rect()
+        if self.region is not None:
+            left, top, right, bottom = self.region
+            self._monitor_rect = (0, 0, right - left, bottom - top)
+        else:
+            self._monitor_rect = full_rect
 
     @property
     def monitor_rect(self) -> Tuple[int, int, int, int]:
@@ -102,24 +123,19 @@ class FrameCapturer:
                 time.sleep(self._none_retry_sleep_s)
 
         if frame is None:
-            if self._last_frame_bgr is not None:
-                return self._last_frame_bgr, FrameMetadata(time.time_ns(), self._monitor_rect)
-            l, t, w, h = self._monitor_rect
-            black = np.zeros((h, w, 3), dtype=np.uint8)
-            self._last_frame_bgr = black
-            return black, FrameMetadata(time.time_ns(), self._monitor_rect)
+            return self._fallback_frame()
 
         frame = frame.astype(np.uint8, copy=False)
         if frame.ndim != 3:
             raise ValueError(f"Unexpected frame shape: {frame.shape}")
 
-        c = frame.shape[2]
-        if c == 3:
+        channels = frame.shape[2]
+        if channels == 3:
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        elif c == 4:
+        elif channels == 4:
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         else:
-            raise ValueError(f"Unexpected channel count: {c}")
+            raise ValueError(f"Unexpected channel count: {channels}")
 
         frame_bgr = np.ascontiguousarray(frame_bgr)
         self._last_frame_bgr = frame_bgr
@@ -135,21 +151,33 @@ class FrameCapturer:
         except Exception:
             pass
 
+    def _create_camera(self):
+        output_idx = max(0, self.monitor_index - 1)
+        try:
+            return dxcam.create(output_idx=output_idx)
+        except Exception as exc:
+            raise CaptureAccessError(
+                "dxcam could not access the desktop duplication API. "
+                "This usually means the session is restricted or desktop capture is blocked."
+            ) from exc
+
+    def _fallback_frame(self) -> Tuple[np.ndarray, FrameMetadata]:
+        if self._last_frame_bgr is not None:
+            return self._last_frame_bgr, FrameMetadata(time.time_ns(), self._monitor_rect)
+        _, _, width, height = self._monitor_rect
+        black = np.zeros((height, width, 3), dtype=np.uint8)
+        self._last_frame_bgr = black
+        return black, FrameMetadata(time.time_ns(), self._monitor_rect)
+
     def _start_async_capture(self) -> None:
         if self._started:
             return
         self._timer_res.enable()
-        if self.capture_hz > 0:
-            target_fps = max(1, int(round(self.capture_hz)))
-        else:
-            target_fps = 1000
-
-        # [修改] start 时传入 region
+        target_fps = max(1, int(round(self.capture_hz))) if self.capture_hz > 0 else 1000
         try:
             self._camera.start(target_fps=target_fps, video_mode=self._video_mode, region=self.region)
         except TypeError:
             self._camera.start(target_fps=target_fps)
-
         self._started = True
 
     def _stop_async_capture(self) -> None:
@@ -167,20 +195,19 @@ class FrameCapturer:
 
     def _detect_monitor_rect(self) -> Tuple[int, int, int, int]:
         try:
-            tmp_fps = 30
             try:
-                self._camera.start(target_fps=tmp_fps, video_mode=True)
+                self._camera.start(target_fps=30, video_mode=True)
             except TypeError:
-                self._camera.start(target_fps=tmp_fps)
+                self._camera.start(target_fps=30)
             deadline = time.time() + 1.0
             while time.time() < deadline:
                 try:
-                    f = self._camera.get_latest_frame()
+                    frame = self._camera.get_latest_frame()
                 except Exception:
-                    f = None
-                if f is not None:
-                    h, w = f.shape[:2]
-                    return 0, 0, int(w), int(h)
+                    frame = None
+                if frame is not None:
+                    height, width = frame.shape[:2]
+                    return 0, 0, int(width), int(height)
                 time.sleep(0.01)
         except Exception:
             pass

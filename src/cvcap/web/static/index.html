@@ -1,0 +1,125 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionTrace</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="page-header">
+      <div class="eyebrow" id="header-eyebrow">Local Control Panel</div>
+      <div class="language-switch">
+        <button class="lang-button active" id="lang-en" type="button" data-lang="en">EN</button>
+        <button class="lang-button" id="lang-zh" type="button" data-lang="zh">中文</button>
+      </div>
+      <h1>VisionTrace</h1>
+      <p class="page-description" id="header-description">
+        Tune runtime parameters, persist them to a config file, then start or stop the detection pipeline from one place.
+      </p>
+      <div class="header-actions">
+        <button class="btn-brand" id="hero-start">Save and Start</button>
+        <button class="btn-warm-sand" id="hero-save">Save Config</button>
+        <button class="btn-white" id="hero-stop">Stop</button>
+        <button class="btn-dark" id="hero-reset">Reset Defaults</button>
+      </div>
+      <div class="config-meta" id="config-path"></div>
+      <div class="runtime-warning" id="runtime-warning" hidden></div>
+    </header>
+
+    <nav class="tab-bar" aria-label="Primary">
+      <button class="tab-button active" id="tab-button-config" type="button" data-tab="config">Config</button>
+      <button class="tab-button" id="tab-button-status" type="button" data-tab="status">Status</button>
+      <button class="tab-button" id="tab-button-logs" type="button" data-tab="logs">Logs</button>
+    </nav>
+
+    <main class="tab-panels">
+      <section class="tab-panel active" id="tab-config">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <div class="card-label" id="config-card-label">Configuration</div>
+              <h2 id="config-title">Parameters</h2>
+              <p id="config-description">Edit the saved config and launch behavior here. Hover a field label to see what that parameter does.</p>
+            </div>
+          </div>
+
+          <div id="form-groups" class="form-groups"></div>
+
+          <div class="cli-preview-card">
+            <div class="card-label">CLI Preview</div>
+            <pre id="cli-preview" class="cli-preview"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-status">
+        <div class="panel-card panel-card-dark">
+          <div class="panel-head stacked">
+            <div>
+              <div class="card-label card-label-dark" id="status-card-label">Runtime Status</div>
+              <h2 id="status-title">Session</h2>
+              <p id="status-description">Check whether the pipeline is running and which config file it was started with.</p>
+            </div>
+            <div class="status-pill" id="status-pill">Idle</div>
+          </div>
+
+          <dl class="status-grid">
+            <div class="status-item">
+              <dt id="status-label-pid">PID</dt>
+              <dd id="status-pid">-</dd>
+            </div>
+            <div class="status-item">
+              <dt id="status-label-started">Started</dt>
+              <dd id="status-started">-</dd>
+            </div>
+            <div class="status-item">
+              <dt id="status-label-exit">Exit Code</dt>
+              <dd id="status-exit">-</dd>
+            </div>
+            <div class="status-item status-item-wide">
+              <dt id="status-label-config">Config File</dt>
+              <dd id="status-config">-</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-logs">
+        <div class="panel-card">
+          <div class="panel-head stacked">
+            <div>
+              <div class="card-label" id="logs-card-label">Logs</div>
+              <h2 id="logs-title">Output</h2>
+              <p id="logs-description">Live runtime output from the launcher and the pipeline process.</p>
+            </div>
+          </div>
+          <div class="charts-grid">
+            <section class="chart-card">
+              <div class="chart-title" id="chart-latency-title">Latency</div>
+              <canvas id="latency-chart" width="900" height="260"></canvas>
+              <div class="chart-legend" id="latency-legend"></div>
+            </section>
+            <section class="chart-card">
+              <div class="chart-title" id="chart-throughput-title">Throughput</div>
+              <canvas id="throughput-chart" width="900" height="260"></canvas>
+              <div class="chart-legend" id="throughput-legend"></div>
+            </section>
+            <section class="chart-card">
+              <div class="chart-title" id="chart-drop-title">Drop FPS</div>
+              <canvas id="drop-chart" width="900" height="220"></canvas>
+              <div class="chart-legend" id="drop-legend"></div>
+            </section>
+          </div>
+          <pre id="log-output" class="log-output"></pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="tooltip" id="tooltip" hidden></div>
+  <div class="toast" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

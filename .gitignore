@@ -1,24 +1,34 @@
-# Python 编译缓存
+﻿# Python caches
 __pycache__/
 *.py[cod]
 *$py.class
 
-# 环境与IDE
+# Virtual environments
 .env
-.venv
+.venv/
 env/
 venv/
+
+# Editors / IDEs
 .idea/
 .vscode/
 
-# 项目运行时生成的文件
+# Local runtime output
 debug/
 *.log
 *.jsonl
 
-# 模型权重 (YOLO weights)
+# Local config
+config/app_config.json
+
+# Model weights and export artifacts
+models/
 *.pt
 *.engine
 *.onnx
 
-debug/
+# OS files
+Thumbs.db
+Desktop.ini
+
+backups/
