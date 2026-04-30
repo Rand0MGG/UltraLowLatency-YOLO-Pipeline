@@ -13,7 +13,6 @@
   chartLoopStarted: false,
 };
 
-const FLOW_RE = /FLOW:\s*Grab=\s*([\d.]+)\s*Proc=\s*([\d.]+)\s*Drop=\s*([\d.]+)\s*Cmd=\s*([\d.]+)Hz\s*\|\s*TIME\(ms\):\s*Wait=\s*([\d.]+)\s*\+\s*Total=\s*([\d.]+)\s*\(Pre=([\d.]+)\s*GPU=([\d.]+)\s*Post=([\d.]+)\s*Ovhd=([\d.]+)\)/;
 const MAX_LOG_LINES = 220;
 const MAX_PERF_SAMPLES = 90;
 const throughputSeries = [
@@ -166,10 +165,11 @@ const fieldTranslations = {
   zh: {
     monitor_index: { label: "显示器编号", help: "选择要抓取的显示器。大多数情况下主屏为 1。" },
     capture_hz: { label: "采集频率", help: "目标抓屏频率。越高越流畅，但 CPU 和 GPU 负载也会更高。" },
-    model: { label: "模型文件", help: "用于检测或姿态推理的权重或 engine 文件。" },
+    model: { label: "模型文件", help: "用于 YOLO26 姿态推理的权重或 TensorRT engine 文件。" },
     device: { label: "推理设备", help: "指定推理设备，例如 cuda:0 表示第一张显卡，cpu 表示使用处理器。" },
     visualize: { label: "显示悬浮层", help: "在屏幕上显示透明叠加层，把检测框和关键点实时绘制出来。" },
     half: { label: "半精度 FP16", help: "在支持的 CUDA 设备上使用半精度推理，通常更省显存也更快。" },
+    end2end: { label: "端到端推理", help: "使用 YOLO26 end-to-end / NMS-free 推理。关闭后可测试传统 NMS 路径。" },
     max_run_seconds: { label: "最长运行秒数", help: "超过这个时间后自动停止。设为 0 表示持续运行直到手动停止。" },
     conf: { label: "置信度阈值", help: "最低检测置信度。数值越高越严格，但可能漏检。" },
     iou: { label: "IoU 阈值", help: "NMS 合并重叠检测框时使用的 IoU 阈值。" },
@@ -193,6 +193,7 @@ const fieldTranslations = {
     stats_interval: { label: "统计输出间隔", help: "多久向日志输出一次性能统计。" },
     smooth: { label: "启用平滑", help: "平滑检测框和关键点，减少视觉抖动。" },
     smooth_alpha: { label: "平滑强度", help: "平滑程度。越高越稳定，但响应会更慢。" },
+    jsonl_log: { label: "JSONL 逐帧日志", help: "把每帧推理结果写入 debug/yolo_log.jsonl，主要用于深度调试。" },
   },
 };
 
@@ -374,32 +375,6 @@ async function updateCliPreview() {
   }
 }
 
-function ingestLogLine(line) {
-  const match = line.match(FLOW_RE);
-  if (match) {
-    state.perfHistory.push({
-      grab: Number(match[1]),
-      proc: Number(match[2]),
-      drop: Number(match[3]),
-      cmd: Number(match[4]),
-      wait: Number(match[5]),
-      total: Number(match[6]),
-      pre: Number(match[7]),
-      gpu: Number(match[8]),
-      post: Number(match[9]),
-      ovhd: Number(match[10]),
-    });
-    if (state.perfHistory.length > MAX_PERF_SAMPLES) {
-      state.perfHistory = state.perfHistory.slice(-MAX_PERF_SAMPLES);
-    }
-    return;
-  }
-  state.logLines.push(line);
-  if (state.logLines.length > MAX_LOG_LINES) {
-    state.logLines = state.logLines.slice(-MAX_LOG_LINES);
-  }
-}
-
 function renderLegends() {
   document.getElementById("throughput-legend").innerHTML = throughputSeries
     .map((series) => `<span class="legend-item"><span class="legend-swatch" style="background:${series.color}"></span>${series.label[state.language]}</span>`)
@@ -535,11 +510,19 @@ function startChartLoop() {
 
 function updateStatus(status) {
   state.lastStatus = status;
-  state.logLines = [];
-  state.perfHistory = [];
-  for (const line of status.logs || []) {
-    ingestLogLine(line);
-  }
+  state.logLines = (status.logs || []).slice(-MAX_LOG_LINES);
+  state.perfHistory = (status.metrics || []).slice(-MAX_PERF_SAMPLES).map((point) => ({
+    grab: Number(point.grab) || 0,
+    proc: Number(point.proc) || 0,
+    drop: Number(point.drop) || 0,
+    cmd: Number(point.cmd) || 0,
+    wait: Number(point.wait) || 0,
+    total: Number(point.total) || 0,
+    pre: Number(point.pre) || 0,
+    gpu: Number(point.gpu) || 0,
+    post: Number(point.post) || 0,
+    ovhd: Number(point.ovhd) || 0,
+  }));
   const pill = document.getElementById("status-pill");
   pill.textContent = status.running ? t().running : t().idle;
   pill.classList.toggle("running", Boolean(status.running));

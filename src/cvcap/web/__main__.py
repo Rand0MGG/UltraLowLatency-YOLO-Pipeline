@@ -3,8 +3,6 @@ from __future__ import annotations
 import argparse
 import webbrowser
 
-import uvicorn
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the cvcap local control panel")
@@ -12,6 +10,8 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser automatically")
     args = parser.parse_args()
+
+    import uvicorn
 
     if not args.no_open:
         webbrowser.open(f"http://{args.host}:{args.port}", new=2)

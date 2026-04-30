@@ -44,7 +44,7 @@ class ConfigStore:
             return []
         models: list[str] = []
         for item in sorted(MODELS_DIR.iterdir()):
-            if item.is_file() and item.suffix.lower() in {".pt", ".onnx", ".engine"}:
+            if item.is_file() and item.suffix.lower() in {".pt", ".onnx", ".engine"} and item.name.lower().startswith("yolo26"):
                 models.append(str(Path("models") / item.name).replace("\\", "/"))
         return models
 

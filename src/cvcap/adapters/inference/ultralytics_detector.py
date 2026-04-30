@@ -15,12 +15,13 @@ logger = logging.getLogger(__name__)
 class YoloDetector:
     def __init__(
         self,
-        model_path: str = "models/yolo11n.pt",
+        model_path: str = "models/yolo26l-pose.engine",
         device: Optional[str] = "cuda:0",
         conf: float = 0.25,
         iou: float = 0.45,
         imgsz: int = 640,
         half: bool = False,
+        end2end: bool = True,
         classes: Optional[Sequence[int]] = None,
         max_det: int = 20,
     ) -> None:
@@ -31,10 +32,12 @@ class YoloDetector:
         self.imgsz = int(imgsz)
         self.half = bool(half)
         self.max_det = int(max_det)
+        self.end2end = bool(end2end)
         self.classes: Optional[Tuple[int, ...]] = tuple(int(c) for c in classes) if classes is not None else None
 
         logger.info("Torch=%s CUDA=%s devices=%d", torch.__version__, torch.cuda.is_available(), torch.cuda.device_count())
         logger.info("Loading YOLO model from %r", self.model_path)
+        logger.info("YOLO26 predict mode: end2end=%s", self.end2end)
         self.model = YOLO(self.model_path)
         raw_names = getattr(self.model, "names", None)
         if isinstance(raw_names, dict):
@@ -50,6 +53,7 @@ class YoloDetector:
             "imgsz": self.imgsz,
             "verbose": False,
             "max_det": self.max_det,
+            "end2end": self.end2end,
         }
         if self.classes is not None:
             self._predict_kwargs["classes"] = self.classes
@@ -129,5 +133,6 @@ class YoloDetector:
             "post_ms": 0.0,
             "imgsz": self.imgsz,
             "conf": self.conf,
+            "end2end": self.end2end,
             "has_keypoints": False,
         }

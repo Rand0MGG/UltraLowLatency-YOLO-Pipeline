@@ -87,6 +87,7 @@ def payload_to_config(payload: dict[str, Any]) -> RunnerArgs:
         base["iou"] = float(base["iou"])
         base["imgsz"] = int(base["imgsz"])
         base["half"] = bool(base["half"])
+        base["end2end"] = bool(base["end2end"])
         base["yolo_classes"] = normalize_yolo_classes(base["yolo_classes"])
         base["yolo_max_det"] = int(base["yolo_max_det"])
         base["save_every"] = float(base["save_every"])
@@ -108,6 +109,7 @@ def payload_to_config(payload: dict[str, Any]) -> RunnerArgs:
         base["visualize"] = bool(base["visualize"])
         base["smooth"] = bool(base["smooth"])
         base["smooth_alpha"] = float(base["smooth_alpha"])
+        base["jsonl_log"] = bool(base["jsonl_log"])
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid config value: {exc}") from exc
 
@@ -134,12 +136,14 @@ def config_to_cli_args(config: RunnerArgs) -> list[str]:
         "--conf", str(config.conf),
         "--iou", str(config.iou),
         "--imgsz", str(config.imgsz),
+        "--end2end" if config.end2end else "--no-end2end",
         "--yolo-max-det", str(config.yolo_max_det),
         "--save-every", str(config.save_every),
         "--stats-interval", str(config.stats_interval),
         "--max-run-seconds", str(config.max_run_seconds),
         "--save-queue", str(config.save_queue),
         "--roi-radius", str(config.roi_radius_px),
+        "--auto-capture-warmup-s", str(config.auto_capture_warmup_s),
         "--cap-min-hz", str(config.cap_min_hz),
         "--cap-max-hz", str(config.cap_max_hz),
         "--target-drop-fps", str(config.target_drop_fps),
@@ -162,4 +166,6 @@ def config_to_cli_args(config: RunnerArgs) -> list[str]:
         args.append("--vis")
     if config.smooth:
         args.append("--smooth")
+    if config.jsonl_log:
+        args.append("--jsonl-log")
     return args

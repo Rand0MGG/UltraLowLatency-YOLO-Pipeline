@@ -12,10 +12,11 @@ FIELD_GROUPS = [
         "fields": [
             {"name": "monitor_index", "label": "Monitor Index", "type": "number", "step": 1, "min": 1, "help": "Choose which monitor to capture. In most setups the main display is 1."},
             {"name": "capture_hz", "label": "Capture Hz", "type": "number", "step": 1, "min": 1, "help": "Target screen capture rate. Higher values feel smoother but use more CPU and GPU time."},
-            {"name": "model", "label": "Model", "type": "select", "options_source": "models", "help": "Model weight or engine file used for detection or pose inference."},
+            {"name": "model", "label": "Model", "type": "select", "options_source": "models", "help": "YOLO26 pose weight or TensorRT engine file used for inference."},
             {"name": "device", "label": "Device", "type": "text", "placeholder": "cuda:0 or cpu", "help": "Inference device. Use cuda:0 for the first GPU or cpu for CPU inference."},
             {"name": "visualize", "label": "Overlay Visualization", "type": "checkbox", "help": "Show the transparent overlay window with boxes and keypoints on screen."},
             {"name": "half", "label": "FP16 / Half Precision", "type": "checkbox", "help": "Use half precision on supported CUDA devices for lower memory usage and often faster inference."},
+            {"name": "end2end", "label": "End-to-End Prediction", "type": "checkbox", "help": "Use YOLO26 end-to-end / NMS-free prediction. Disable to test the traditional NMS path."},
             {"name": "max_run_seconds", "label": "Max Run Seconds", "type": "number", "step": 1, "min": 0, "help": "Auto-stop after this many seconds. Use 0 to keep running until you stop it manually."},
         ],
     },
@@ -67,6 +68,7 @@ FIELD_GROUPS = [
             {"name": "stats_interval", "label": "Stats Interval", "type": "number", "step": 0.1, "min": 0.1, "help": "How often runtime statistics are printed to the log."},
             {"name": "smooth", "label": "Enable Smoothing", "type": "checkbox", "help": "Smooth boxes and keypoints to reduce visible jitter."},
             {"name": "smooth_alpha", "label": "Smooth Alpha", "type": "number", "step": 0.01, "min": 0, "max": 1, "help": "Smoothing strength. Higher values are steadier but may feel less responsive."},
+            {"name": "jsonl_log", "label": "JSONL Frame Log", "type": "checkbox", "help": "Write detailed per-frame inference records to debug/yolo_log.jsonl for debugging."},
         ],
     },
 ]
