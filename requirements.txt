@@ -20,6 +20,6 @@ tensorrt_cu13_libs==10.14.1.48.post1
 torch==2.9.1+cu128
 torchaudio==2.9.1+cu128
 torchvision==0.24.1+cu128
-ultralytics==8.3.237
+ultralytics==8.4.45
 ultralytics-thop==2.0.18
 uvicorn==0.43.0

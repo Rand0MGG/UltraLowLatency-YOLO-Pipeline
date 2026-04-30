@@ -9,10 +9,10 @@ from typing import Any, Dict, Iterable
 
 
 class JsonlLogger:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, max_queue_size: int = 512) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._queue: queue.Queue[Dict[str, Any]] = queue.Queue()
+        self._queue: queue.Queue[Dict[str, Any]] = queue.Queue(maxsize=max_queue_size)
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._worker_loop, name="LogWriter", daemon=True)
         self._thread.start()
@@ -23,22 +23,29 @@ class JsonlLogger:
             self._thread.join(timeout=2.0)
 
     def append_record(self, record: Dict[str, Any]) -> None:
-        self._queue.put(record)
+        try:
+            self._queue.put_nowait(record)
+        except queue.Full:
+            pass
 
     def _worker_loop(self) -> None:
         try:
             with self.path.open("a", encoding="utf-8", buffering=8192) as handle:
-                while True:
+                last_flush = time.perf_counter()
+                while not self._stop_event.is_set() or not self._queue.empty():
                     try:
                         record = self._queue.get(timeout=0.5)
                         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        handle.flush()
+                        now = time.perf_counter()
+                        if now - last_flush >= 0.5:
+                            handle.flush()
+                            last_flush = now
                         self._queue.task_done()
                     except queue.Empty:
-                        if self._stop_event.is_set():
-                            break
+                        handle.flush()
                     except Exception as exc:
                         print(f"[LogWriter Error] {exc}")
+                handle.flush()
         except Exception as exc:
             print(f"[LogWriter Critical] Failed to open log file: {exc}")
 

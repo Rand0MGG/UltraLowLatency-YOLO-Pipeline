@@ -78,12 +78,13 @@ def inference_process_target(
             iou=args.iou,
             imgsz=args.imgsz,
             half=args.half,
+            end2end=args.end2end,
             classes=args.yolo_classes,
             max_det=args.yolo_max_det,
         )
         buffer = SharedTripleBuffer(shape=frame_shape, name=shm_name, create=False)
-        json_logger = JsonlLogger(Path("debug") / "yolo_log.jsonl")
-        saver = AsyncSaver(save_queue_size=args.save_queue, roi_square=args.roi_square)
+        json_logger = JsonlLogger(Path("debug") / "yolo_log.jsonl") if args.jsonl_log else None
+        saver = AsyncSaver(save_queue_size=args.save_queue, roi_square=args.roi_square) if args.save_every > 0 else None
         stats = PerfStats(shared_timings)
         smoother = BoxSmoother(alpha=args.smooth_alpha, iou_thresh=0.5) if args.smooth else None
 
@@ -121,24 +122,25 @@ def inference_process_target(
                 except queue.Full:
                     pass
 
-            json_logger.append_record(
-                json_logger.make_infer_record(
-                    timestamp_ns=int(ts_ns),
-                    monitor_rect=monitor_rect,
-                    frame_shape=frame_bgr.shape,
-                    infer_ms=info.get("gpu_ms", 0.0),
-                    boxes=[
-                        {
-                            "cls_id": int(box.cls_id),
-                            "cls_name": str(box.cls_name),
-                            "conf": float(box.conf),
-                            "xyxy": list(box.xyxy),
-                            "kpts_xy": [[float(x), float(y)] for (x, y) in box.kpts_xy] if box.kpts_xy is not None else None,
-                        }
-                        for box in boxes
-                    ],
+            if json_logger is not None:
+                json_logger.append_record(
+                    json_logger.make_infer_record(
+                        timestamp_ns=int(ts_ns),
+                        monitor_rect=monitor_rect,
+                        frame_shape=frame_bgr.shape,
+                        infer_ms=info.get("gpu_ms", 0.0),
+                        boxes=[
+                            {
+                                "cls_id": int(box.cls_id),
+                                "cls_name": str(box.cls_name),
+                                "conf": float(box.conf),
+                                "xyxy": list(box.xyxy),
+                                "kpts_xy": [[float(x), float(y)] for (x, y) in box.kpts_xy] if box.kpts_xy is not None else None,
+                            }
+                            for box in boxes
+                        ],
+                    )
                 )
-            )
 
             if args.save_every > 0:
                 now = time.perf_counter()
@@ -146,7 +148,8 @@ def inference_process_target(
                     last_save_t = now
                     stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
                     out_path = Path("debug") / "yolo_samples" / f"sample_{stamp}_{int(now * 1000) % 1000:03d}.jpg"
-                    saver.push(frame_bgr.copy(), boxes, roi_param, out_path)
+                    if saver is not None:
+                        saver.push(frame_bgr.copy(), boxes, roi_param, out_path)
 
             end = time.perf_counter()
             stats.update(
@@ -163,11 +166,16 @@ def inference_process_target(
         logging.error(error_text)
         if not model_ready_evt.is_set():
             try:
-                init_status_queue.put({"ok": False, "message": error_text})
+                init_status_queue.put_nowait({"ok": False, "message": error_text})
             except Exception:
                 pass
             model_ready_evt.set()
-            stop_evt.set()
+        else:
+            try:
+                init_status_queue.put_nowait({"ok": False, "message": error_text})
+            except Exception:
+                pass
+        stop_evt.set()
     finally:
         try:
             if buffer:
@@ -199,58 +207,66 @@ def run_from_args(args: RunnerArgs) -> int:
     cond = multiprocessing.Condition(lock)
     stop_evt = multiprocessing.Event()
     model_ready_evt = multiprocessing.Event()
-    init_status_queue = Queue(maxsize=1)
+    init_status_queue = Queue(maxsize=4)
     shared_read_count = Value(c_longlong, 0)
     shared_timings = Array(c_double, [0.0] * 6)
-    buffer = SharedTripleBuffer(shape=final_shape, name="yolo_shm_triple_region", create=True)
-
+    buffer = None
     viz_queue = None
     viz_proc = None
-    if args.visualize:
-        viz_queue = Queue(maxsize=2)
-        viz_proc = VisualizerProcess(shared_queue=viz_queue, window_name="YOLO Overlay", width=screen_w, height=screen_h)
-        viz_proc.start()
-
-    infer_proc = Process(
-        target=inference_process_target,
-        args=(args, stop_evt, buffer.name, final_shape, lock, cond, shared_read_count, shared_timings, model_ready_evt, init_status_queue, viz_queue, offset_x, offset_y),
-        name="Proc-Inference",
-        daemon=True,
-    )
-    infer_proc.start()
-
-    logging.info("Waiting for YOLO model to load...")
-    if not model_ready_evt.wait(timeout=60.0):
-        stop_evt.set()
-        raise PipelineError("Timed out while waiting for the YOLO worker to initialize.")
-
-    init_result = None
+    infer_proc = None
+    capturer = None
     try:
-        init_result = init_status_queue.get_nowait()
-    except queue.Empty:
-        init_result = None
+        buffer = SharedTripleBuffer(shape=final_shape, name="yolo_shm_triple_region", create=True)
 
-    if init_result and not init_result.get("ok", False):
-        raise PipelineError(
-            "YOLO worker failed during initialization. "
-            f"Model path: {args.model}. "
-            "The loaded file may be corrupted or incompatible."
+        if args.visualize:
+            viz_queue = Queue(maxsize=2)
+            viz_proc = VisualizerProcess(shared_queue=viz_queue, window_name="YOLO Overlay", width=screen_w, height=screen_h)
+            viz_proc.start()
+
+        infer_proc = Process(
+            target=inference_process_target,
+            args=(args, stop_evt, buffer.name, final_shape, lock, cond, shared_read_count, shared_timings, model_ready_evt, init_status_queue, viz_queue, offset_x, offset_y),
+            name="Proc-Inference",
+            daemon=True,
         )
-    if stop_evt.is_set() and not infer_proc.is_alive():
-        raise PipelineError("YOLO worker failed during initialization. Check the logs above.")
+        infer_proc.start()
 
-    logging.info("Pipeline ready. Starting capture...")
-    capturer = FrameCapturer(monitor_index=args.monitor_index, capture_hz=args.capture_hz, region=capture_region)
-    total_writes = 0
-    last_writes = 0
-    last_reads = 0
-    start_t = time.perf_counter()
-    stats_t = time.perf_counter()
-    integral = 0.0
-    last_apply_hz = float(args.capture_hz)
+        logging.info("Waiting for YOLO model to load...")
+        if not model_ready_evt.wait(timeout=60.0):
+            stop_evt.set()
+            raise PipelineError("Timed out while waiting for the YOLO worker to initialize.")
 
-    try:
+        init_result = None
+        try:
+            init_result = init_status_queue.get_nowait()
+        except queue.Empty:
+            init_result = None
+
+        if init_result and not init_result.get("ok", False):
+            raise PipelineError(
+                "YOLO worker failed during initialization. "
+                f"Model path: {args.model}. "
+                "The loaded file may be corrupted or incompatible."
+            )
+        if stop_evt.is_set() and infer_proc is not None and not infer_proc.is_alive():
+            raise PipelineError("YOLO worker failed during initialization. Check the logs above.")
+
+        logging.info("Pipeline ready. Starting capture...")
+        capturer = FrameCapturer(monitor_index=args.monitor_index, capture_hz=args.capture_hz, region=capture_region)
+        total_writes = 0
+        last_writes = 0
+        last_reads = 0
+        start_t = time.perf_counter()
+        stats_t = time.perf_counter()
+        integral = 0.0
+        last_apply_hz = float(args.capture_hz)
+
         while not stop_evt.is_set():
+            worker_error = _pop_worker_error(init_status_queue)
+            if worker_error is not None:
+                raise PipelineError(f"YOLO worker crashed during runtime. {worker_error}")
+            if infer_proc is not None and not infer_proc.is_alive():
+                raise PipelineError(f"YOLO worker exited unexpectedly with code {infer_proc.exitcode}.")
             if args.max_run_seconds > 0 and (time.perf_counter() - start_t) > args.max_run_seconds:
                 break
             frame_bgr, meta = capturer.grab()
@@ -284,25 +300,51 @@ def run_from_args(args: RunnerArgs) -> int:
                 )
                 if args.auto_capture and (now - start_t) > args.auto_capture_warmup_s:
                     last_apply_hz, integral = _apply_auto_capture(args, capturer, last_apply_hz, integral, fps_drop, t_total, elapsed)
+
+        worker_error = _pop_worker_error(init_status_queue)
+        if worker_error is not None:
+            raise PipelineError(f"YOLO worker crashed during runtime. {worker_error}")
     except KeyboardInterrupt:
         logging.info("Keyboard interrupt received.")
     finally:
         stop_evt.set()
         with cond:
             cond.notify_all()
-        infer_proc.join(timeout=2.0)
-        if infer_proc.is_alive():
+        if infer_proc is not None:
+            infer_proc.join(timeout=2.0)
+        if infer_proc is not None and infer_proc.is_alive():
             infer_proc.terminate()
+            infer_proc.join(timeout=1.0)
         if viz_proc:
             viz_proc.stop()
             viz_proc.join(timeout=1.0)
             if viz_proc.is_alive():
                 viz_proc.terminate()
-        capturer.close()
-        buffer.unlink()
+                viz_proc.join(timeout=1.0)
+        if capturer is not None:
+            capturer.close()
+        if buffer is not None:
+            try:
+                buffer.close()
+            finally:
+                buffer.unlink()
         logging.info("Clean shutdown completed.")
 
     return 0
+
+
+def _pop_worker_error(status_queue: Queue) -> Optional[str]:
+    try:
+        status = status_queue.get_nowait()
+    except queue.Empty:
+        return None
+    if isinstance(status, dict) and not status.get("ok", False):
+        message = str(status.get("message") or "").strip()
+        if message:
+            last_line = message.splitlines()[-1]
+            return f"Check logs above. Last error: {last_line}"
+        return "Check logs above."
+    return None
 
 
 def _set_process_priority() -> None:

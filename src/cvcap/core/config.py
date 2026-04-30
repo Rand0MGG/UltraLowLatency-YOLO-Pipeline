@@ -7,16 +7,16 @@ class RunnerArgs:
     monitor_index: int = 1
     capture_hz: float = 60.0
 
-    model: str = "models/yolo11l-pose.engine"
+    model: str = "models/yolo26l-pose.engine"
     device: str = "cuda:0"
     conf: float = 0.25
     iou: float = 0.45
     imgsz: int = 736
     half: bool = False
+    end2end: bool = True
     yolo_classes: Optional[Tuple[int, ...]] = (0,)
     yolo_max_det: int = 20
 
-    queue_size: int = 1
     save_every: float = 0.0
     save_queue: int = 8
     stats_interval: float = 1.0
@@ -39,3 +39,4 @@ class RunnerArgs:
     visualize: bool = False
     smooth: bool = False
     smooth_alpha: float = 0.6
+    jsonl_log: bool = False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import signal
 import subprocess
 import sys
@@ -7,6 +8,13 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+
+
+FLOW_RE = re.compile(
+    r"FLOW:\s*Grab=\s*([\d.]+)\s*Proc=\s*([\d.]+)\s*Drop=\s*([\d.]+)\s*Cmd=\s*([\d.]+)Hz\s*\|\s*"
+    r"TIME\(ms\):\s*Wait=\s*([\d.]+)\s*\+\s*Total=\s*([\d.]+)\s*"
+    r"\(Pre=([\d.]+)\s*GPU=([\d.]+)\s*Post=([\d.]+)\s*Ovhd=([\d.]+)\)"
+)
 
 
 class PipelineProcessManager:
@@ -17,6 +25,7 @@ class PipelineProcessManager:
         self._started_at: float | None = None
         self._last_exit_code: int | None = None
         self._log_lines: deque[str] = deque(maxlen=400)
+        self._metrics: deque[dict[str, float]] = deque(maxlen=90)
         self._reader_thread: threading.Thread | None = None
         self._lock = threading.RLock()
 
@@ -41,6 +50,7 @@ class PipelineProcessManager:
             self._started_at = time.time()
             self._last_exit_code = None
             self._log_lines.clear()
+            self._metrics.clear()
             self._reader_thread = threading.Thread(target=self._read_output, daemon=True)
             self._reader_thread.start()
             self._log_lines.append(f"$ {' '.join(cmd)}")
@@ -81,6 +91,7 @@ class PipelineProcessManager:
                 "started_at": self._started_at,
                 "last_exit_code": exit_code,
                 "logs": list(self._log_lines),
+                "metrics": list(self._metrics),
                 "config_path": str(self.config_path),
             }
 
@@ -90,10 +101,33 @@ class PipelineProcessManager:
             return
         try:
             for line in process.stdout:
+                text = line.rstrip()
+                metric = self._parse_flow_line(text)
                 with self._lock:
-                    self._log_lines.append(line.rstrip())
+                    if metric is None:
+                        self._log_lines.append(text)
+                    else:
+                        self._metrics.append(metric)
         finally:
             try:
                 process.stdout.close()
             except Exception:
                 pass
+
+    @staticmethod
+    def _parse_flow_line(line: str) -> dict[str, float] | None:
+        match = FLOW_RE.search(line)
+        if not match:
+            return None
+        return {
+            "grab": float(match.group(1)),
+            "proc": float(match.group(2)),
+            "drop": float(match.group(3)),
+            "cmd": float(match.group(4)),
+            "wait": float(match.group(5)),
+            "total": float(match.group(6)),
+            "pre": float(match.group(7)),
+            "gpu": float(match.group(8)),
+            "post": float(match.group(9)),
+            "ovhd": float(match.group(10)),
+        }

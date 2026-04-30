@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import platform
 import threading
 import time
@@ -12,6 +13,8 @@ import dxcam
 import numpy as np
 
 from cvcap.core.errors import CaptureAccessError
+
+logger = logging.getLogger(__name__)
 
 try:
     from dxcam.dxcam import DXCamera as _DXCamera
@@ -85,6 +88,7 @@ class FrameCapturer:
         self._lock = threading.Lock()
         self._started = False
         self._video_mode = True
+        self._camera_outputs_bgr = False
         self._last_frame_bgr: np.ndarray | None = None
         self._timer_res = _TimerResolutionEnabler(period_ms=1)
         self._none_retry_times = 2
@@ -131,9 +135,10 @@ class FrameCapturer:
 
         channels = frame.shape[2]
         if channels == 3:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame_bgr = frame if self._camera_outputs_bgr else cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         elif channels == 4:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+            code = cv2.COLOR_BGRA2BGR if self._camera_outputs_bgr else cv2.COLOR_RGBA2BGR
+            frame_bgr = cv2.cvtColor(frame, code)
         else:
             raise ValueError(f"Unexpected channel count: {channels}")
 
@@ -154,7 +159,15 @@ class FrameCapturer:
     def _create_camera(self):
         output_idx = max(0, self.monitor_index - 1)
         try:
-            return dxcam.create(output_idx=output_idx)
+            try:
+                camera = dxcam.create(output_idx=output_idx, output_color="BGR")
+                self._camera_outputs_bgr = True
+                logger.info("dxcam output_color=BGR enabled.")
+                return camera
+            except (TypeError, ValueError):
+                self._camera_outputs_bgr = False
+                logger.info("dxcam output_color=BGR unavailable; falling back to RGB conversion.")
+                return dxcam.create(output_idx=output_idx)
         except Exception as exc:
             raise CaptureAccessError(
                 "dxcam could not access the desktop duplication API. "
