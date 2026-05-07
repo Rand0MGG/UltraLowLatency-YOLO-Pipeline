@@ -22,6 +22,27 @@ class RunnerArgs:
     stats_interval: float = 1.0
     max_run_seconds: float = 0.0
 
+    auto_label: bool = False
+    auto_label_dir: str = "datasets/runtime_autolabel/staging/images"
+    auto_label_incomplete_enabled: bool = True
+    auto_label_incomplete_prob: float = 1.0
+    auto_label_complete_enabled: bool = True
+    auto_label_both_prob: float = 0.1
+    auto_label_empty_enabled: bool = True
+    auto_label_empty_prob: float = 0.01
+    auto_label_low_conf_enabled: bool = True
+    auto_label_low_conf_prob: float = 0.8
+    auto_label_low_conf_min: float = 0.25
+    auto_label_low_conf_max: float = 0.65
+    auto_label_conflict_enabled: bool = True
+    auto_label_conflict_prob: float = 1.0
+    auto_label_conflict_iou: float = 0.45
+    auto_label_flip_enabled: bool = True
+    auto_label_flip_prob: float = 1.0
+    auto_label_flip_iou: float = 0.45
+    auto_label_flip_max_age_s: float = 0.5
+    auto_label_min_interval_s: float = 1.0
+
     roi_square: bool = False
     roi_radius_px: int = 368
 

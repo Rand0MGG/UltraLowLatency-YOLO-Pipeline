@@ -1,0 +1,186 @@
+{
+  "name": "visiontrace-subagents",
+  "version": 1,
+  "description": "Reusable 8-agent prompt pack for VisionTrace Codex work.",
+  "default_max_parallel": 4,
+  "main_agent_contract": [
+    "Decide whether delegation is useful.",
+    "Keep implementation write scopes disjoint.",
+    "Integrate subagent results.",
+    "Own final verification and tradeoff decisions."
+  ],
+  "agents": [
+    {
+      "id": "capture",
+      "name": "Capture Agent",
+      "default_mode": "implementation",
+      "prompt_file": "roles/capture.md",
+      "primary_scope": [
+        "src/cvcap/adapters/capture/",
+        "capture and ROI paths in src/cvcap/app/runtime.py"
+      ],
+      "use_when": [
+        "screen capture behavior",
+        "monitor selection",
+        "ROI geometry",
+        "capture-rate tuning",
+        "dxcam compatibility"
+      ]
+    },
+    {
+      "id": "inference",
+      "name": "Inference Agent",
+      "default_mode": "implementation",
+      "prompt_file": "roles/inference.md",
+      "primary_scope": [
+        "src/cvcap/adapters/inference/",
+        "src/cvcap/core/detections.py",
+        "model-related RunnerArgs fields"
+      ],
+      "use_when": [
+        "YOLO inference",
+        "TensorRT or Ultralytics behavior",
+        "model arguments",
+        "class filtering",
+        "detection output shape"
+      ]
+    },
+    {
+      "id": "runtime",
+      "name": "Runtime Agent",
+      "default_mode": "implementation",
+      "prompt_file": "roles/runtime.md",
+      "primary_scope": [
+        "src/cvcap/app/runtime.py",
+        "src/cvcap/runtime/"
+      ],
+      "use_when": [
+        "multiprocess orchestration",
+        "shared memory",
+        "overlay",
+        "smoothing",
+        "saving",
+        "metrics",
+        "runtime backpressure"
+      ]
+    },
+    {
+      "id": "web-api",
+      "name": "Web/API Agent",
+      "default_mode": "implementation",
+      "prompt_file": "roles/web-api.md",
+      "primary_scope": [
+        "src/cvcap/web/server.py",
+        "src/cvcap/web/process_manager.py",
+        "src/cvcap/web/forms.py",
+        "src/cvcap/web/static/"
+      ],
+      "use_when": [
+        "FastAPI routes",
+        "config forms",
+        "process manager",
+        "frontend controls",
+        "logs and charts"
+      ]
+    },
+    {
+      "id": "dataset-autolabel",
+      "name": "Dataset/AutoLabel Agent",
+      "default_mode": "implementation",
+      "prompt_file": "roles/dataset-autolabel.md",
+      "primary_scope": [
+        "src/cvcap/runtime/auto_label.py",
+        "auto-label API routes",
+        "datasets/ conventions"
+      ],
+      "use_when": [
+        "runtime image capture",
+        "batch annotation",
+        "shuffle and merge workflows",
+        "YOLO label output",
+        "dataset safety"
+      ]
+    },
+    {
+      "id": "qa-review",
+      "name": "QA/Review Agent",
+      "default_mode": "read-only",
+      "prompt_file": "roles/qa-review.md",
+      "primary_scope": [
+        "cross-cutting review",
+        "tests",
+        "dirty-worktree awareness"
+      ],
+      "use_when": [
+        "correctness review",
+        "regression risk",
+        "test design",
+        "release readiness",
+        "uncommitted-change review"
+      ]
+    },
+    {
+      "id": "latency-simplicity",
+      "name": "Latency/Simplicity Agent",
+      "default_mode": "read-only",
+      "prompt_file": "roles/latency-simplicity.md",
+      "primary_scope": [
+        "hot-path latency",
+        "runtime simplicity",
+        "complexity control"
+      ],
+      "use_when": [
+        "performance optimization",
+        "refactor review",
+        "hot-path safety",
+        "blocking I/O or queue concerns",
+        "over-abstraction review"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "Docs Agent",
+      "default_mode": "read-only",
+      "prompt_file": "roles/docs.md",
+      "primary_scope": [
+        "readme.md",
+        "AGENTS.md",
+        "docs/",
+        ".agents/subagents/"
+      ],
+      "use_when": [
+        "documentation drift",
+        "new feature docs",
+        "architecture notes",
+        "run commands",
+        "change summaries"
+      ]
+    }
+  ],
+  "dispatches": [
+    {
+      "task_type": "performance_issue",
+      "agents": ["capture", "inference", "runtime", "latency-simplicity"]
+    },
+    {
+      "task_type": "web_control_panel_feature",
+      "agents": ["web-api", "runtime"]
+    },
+    {
+      "task_type": "runtime_config_option",
+      "agents": ["runtime", "web-api", "qa-review"]
+    },
+    {
+      "task_type": "auto_label_workflow",
+      "agents": ["dataset-autolabel", "web-api", "qa-review"]
+    },
+    {
+      "task_type": "large_refactor",
+      "agents": ["owning-agent", "latency-simplicity", "qa-review"]
+    },
+    {
+      "task_type": "release_cleanup",
+      "agents": ["qa-review", "docs"]
+    }
+  ]
+}

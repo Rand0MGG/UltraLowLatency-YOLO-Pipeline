@@ -31,6 +31,26 @@ def build_parser(defaults: RunnerArgs) -> argparse.ArgumentParser:
     parser.add_argument("--stats-interval", type=float, default=defaults.stats_interval)
     parser.add_argument("--max-run-seconds", type=float, default=defaults.max_run_seconds)
     parser.add_argument("--save-queue", type=int, default=defaults.save_queue)
+    parser.add_argument("--auto-label", action=argparse.BooleanOptionalAction, default=defaults.auto_label, help="Save useful ROI images only; labels can be generated later from the Web panel")
+    parser.add_argument("--auto-label-dir", type=str, default=defaults.auto_label_dir, help="Dataset root or staging image folder for auto-captured samples")
+    parser.add_argument("--auto-label-incomplete-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_incomplete_enabled)
+    parser.add_argument("--auto-label-incomplete-prob", type=float, default=defaults.auto_label_incomplete_prob)
+    parser.add_argument("--auto-label-complete-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_complete_enabled)
+    parser.add_argument("--auto-label-both-prob", type=float, default=defaults.auto_label_both_prob, help="Save probability when both body and head are detected")
+    parser.add_argument("--auto-label-empty-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_empty_enabled)
+    parser.add_argument("--auto-label-empty-prob", type=float, default=defaults.auto_label_empty_prob, help="Save probability when no boxes are detected")
+    parser.add_argument("--auto-label-low-conf-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_low_conf_enabled)
+    parser.add_argument("--auto-label-low-conf-prob", type=float, default=defaults.auto_label_low_conf_prob)
+    parser.add_argument("--auto-label-low-conf-min", type=float, default=defaults.auto_label_low_conf_min)
+    parser.add_argument("--auto-label-low-conf-max", type=float, default=defaults.auto_label_low_conf_max)
+    parser.add_argument("--auto-label-conflict-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_conflict_enabled)
+    parser.add_argument("--auto-label-conflict-prob", type=float, default=defaults.auto_label_conflict_prob)
+    parser.add_argument("--auto-label-conflict-iou", type=float, default=defaults.auto_label_conflict_iou)
+    parser.add_argument("--auto-label-flip-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_flip_enabled)
+    parser.add_argument("--auto-label-flip-prob", type=float, default=defaults.auto_label_flip_prob)
+    parser.add_argument("--auto-label-flip-iou", type=float, default=defaults.auto_label_flip_iou)
+    parser.add_argument("--auto-label-flip-max-age-s", type=float, default=defaults.auto_label_flip_max_age_s)
+    parser.add_argument("--auto-label-min-interval-s", type=float, default=defaults.auto_label_min_interval_s, help="Minimum seconds between auto-label saves")
     parser.add_argument("--roi-square", action=argparse.BooleanOptionalAction, default=defaults.roi_square, help="Crop center square")
     parser.add_argument("--roi-radius", type=int, default=defaults.roi_radius_px, help="Radius of ROI")
     parser.add_argument("--auto-capture", action=argparse.BooleanOptionalAction, default=defaults.auto_capture, help="Adapt capture FPS based on inference latency")
@@ -85,6 +105,26 @@ def parse_request(argv: list[str] | None = None) -> CliRequest:
         stats_interval=ns.stats_interval,
         max_run_seconds=ns.max_run_seconds,
         save_queue=ns.save_queue,
+        auto_label=ns.auto_label,
+        auto_label_dir=ns.auto_label_dir,
+        auto_label_incomplete_enabled=ns.auto_label_incomplete_enabled,
+        auto_label_incomplete_prob=ns.auto_label_incomplete_prob,
+        auto_label_complete_enabled=ns.auto_label_complete_enabled,
+        auto_label_both_prob=ns.auto_label_both_prob,
+        auto_label_empty_enabled=ns.auto_label_empty_enabled,
+        auto_label_empty_prob=ns.auto_label_empty_prob,
+        auto_label_low_conf_enabled=ns.auto_label_low_conf_enabled,
+        auto_label_low_conf_prob=ns.auto_label_low_conf_prob,
+        auto_label_low_conf_min=ns.auto_label_low_conf_min,
+        auto_label_low_conf_max=ns.auto_label_low_conf_max,
+        auto_label_conflict_enabled=ns.auto_label_conflict_enabled,
+        auto_label_conflict_prob=ns.auto_label_conflict_prob,
+        auto_label_conflict_iou=ns.auto_label_conflict_iou,
+        auto_label_flip_enabled=ns.auto_label_flip_enabled,
+        auto_label_flip_prob=ns.auto_label_flip_prob,
+        auto_label_flip_iou=ns.auto_label_flip_iou,
+        auto_label_flip_max_age_s=ns.auto_label_flip_max_age_s,
+        auto_label_min_interval_s=ns.auto_label_min_interval_s,
         roi_square=bool(ns.roi_square),
         roi_radius_px=int(ns.roi_radius),
         auto_capture=ns.auto_capture,

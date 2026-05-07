@@ -1,13 +1,33 @@
 from __future__ import annotations
 
+import ctypes
+import logging
+import platform
 import queue
 import sys
 import time
+from ctypes import wintypes
 from multiprocessing import Process
 
 from PyQt5.QtCore import QRectF, Qt, QTimer
 from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt5.QtWidgets import QApplication, QWidget
+
+logger = logging.getLogger(__name__)
+
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+
+def _box_color(box) -> QColor:
+    cls_name = str(getattr(box, "cls_name", "")).lower()
+    cls_id = int(getattr(box, "cls_id", -1))
+    if cls_id == 2 or "head" in cls_name:
+        return QColor(255, 0, 0)
+    if cls_id == 0 or cls_name.startswith("ct"):
+        return QColor(0, 120, 255)
+    if cls_id == 1 or cls_name.startswith("t"):
+        return QColor(255, 255, 255)
+    return QColor(0, 255, 0)
 
 
 class OverlayWindow(QWidget):
@@ -19,6 +39,7 @@ class OverlayWindow(QWidget):
         self.frame_count = 0
         self.last_fps_time = time.time()
         self.current_fps = 0
+        self._capture_exclusion_applied = False
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_NoSystemBackground)
@@ -26,6 +47,30 @@ class OverlayWindow(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_state)
         self.timer.start(1)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._apply_capture_exclusion()
+
+    def _apply_capture_exclusion(self):
+        if self._capture_exclusion_applied:
+            return
+        if not platform.system().lower().startswith("win"):
+            self._capture_exclusion_applied = True
+            return
+        try:
+            hwnd = int(self.winId())
+            user32 = ctypes.windll.user32
+            user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
+            user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
+            ok = bool(user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE))
+            if ok:
+                logger.info("Overlay excluded from Windows capture.")
+            else:
+                logger.warning("Could not exclude overlay from Windows capture.")
+        except Exception as exc:
+            logger.warning("Could not exclude overlay from Windows capture: %s", exc)
+        self._capture_exclusion_applied = True
 
     def update_state(self):
         try:
@@ -43,9 +88,7 @@ class OverlayWindow(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        pen_box = QPen(QColor(0, 255, 0), 2)
-        pen_text = QPen(QColor(0, 255, 0), 1)
-        painter.setFont(QFont("Arial", 10, QFont.Bold))
+        painter.setFont(QFont("Arial", 9, QFont.Bold))
         self.frame_count += 1
         now = time.time()
         if now - self.last_fps_time >= 1.0:
@@ -57,17 +100,20 @@ class OverlayWindow(QWidget):
 
         if self.roi_rect:
             cx, cy, radius = self.roi_rect
-            painter.setPen(QPen(QColor(255, 255, 0), 2))
+            painter.setPen(QPen(QColor(255, 255, 0), 1))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
 
-        painter.setPen(pen_box)
         painter.setBrush(Qt.NoBrush)
         for box in self.current_boxes:
             x1, y1, x2, y2 = box.xyxy
+            color = _box_color(box)
+            pen_box = QPen(color, 1)
+            pen_text = QPen(color, 1)
+            painter.setPen(pen_box)
             painter.drawRect(QRectF(x1, y1, x2 - x1, y2 - y1))
             painter.setPen(pen_text)
-            painter.drawText(int(x1), int(y1) - 5, f"{box.cls_name} {box.conf:.2f}")
+            painter.drawText(int(x1), int(y1) - 4, f"{box.conf:.2f}")
             painter.setPen(pen_box)
             if getattr(box, "kpts_xy", None):
                 skeleton = [(5, 7), (7, 9), (6, 8), (8, 10), (5, 6), (5, 11), (6, 12), (11, 13), (13, 15), (12, 14), (14, 16)]

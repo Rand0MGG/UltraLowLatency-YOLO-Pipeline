@@ -20,6 +20,7 @@ from cvcap.adapters.inference.ultralytics_detector import YoloDetector
 from cvcap.core.config import RunnerArgs
 from cvcap.core.errors import CaptureAccessError, PipelineError
 from cvcap.runtime.logging_jsonl import JsonlLogger
+from cvcap.runtime.auto_label import AutoLabeler
 from cvcap.runtime.metrics import PerfStats
 from cvcap.runtime.overlay import VisualizerProcess
 from cvcap.runtime.saving import AsyncSaver
@@ -68,6 +69,7 @@ def inference_process_target(
     )
 
     saver = None
+    auto_labeler = None
     buffer = None
     json_logger = None
     try:
@@ -85,6 +87,32 @@ def inference_process_target(
         buffer = SharedTripleBuffer(shape=frame_shape, name=shm_name, create=False)
         json_logger = JsonlLogger(Path("debug") / "yolo_log.jsonl") if args.jsonl_log else None
         saver = AsyncSaver(save_queue_size=args.save_queue, roi_square=args.roi_square) if args.save_every > 0 else None
+        auto_labeler = (
+            AutoLabeler(
+                output_dir=Path(args.auto_label_dir),
+                both_prob=args.auto_label_both_prob,
+                empty_prob=args.auto_label_empty_prob,
+                min_interval_s=args.auto_label_min_interval_s,
+                queue_size=args.save_queue,
+                incomplete_enabled=args.auto_label_incomplete_enabled,
+                incomplete_prob=args.auto_label_incomplete_prob,
+                complete_enabled=args.auto_label_complete_enabled,
+                empty_enabled=args.auto_label_empty_enabled,
+                low_conf_enabled=args.auto_label_low_conf_enabled,
+                low_conf_prob=args.auto_label_low_conf_prob,
+                low_conf_min=args.auto_label_low_conf_min,
+                low_conf_max=args.auto_label_low_conf_max,
+                conflict_enabled=args.auto_label_conflict_enabled,
+                conflict_prob=args.auto_label_conflict_prob,
+                conflict_iou=args.auto_label_conflict_iou,
+                flip_enabled=args.auto_label_flip_enabled,
+                flip_prob=args.auto_label_flip_prob,
+                flip_iou=args.auto_label_flip_iou,
+                flip_max_age_s=args.auto_label_flip_max_age_s,
+            )
+            if args.auto_label
+            else None
+        )
         stats = PerfStats(shared_timings)
         smoother = BoxSmoother(alpha=args.smooth_alpha, iou_thresh=0.5) if args.smooth else None
 
@@ -107,6 +135,10 @@ def inference_process_target(
                 shared_read_count.value += 1
 
             boxes, info = detector.infer(frame_bgr)
+            raw_boxes = boxes
+            if auto_labeler is not None:
+                label_frame, label_boxes = _auto_label_input(frame_bgr, raw_boxes, args)
+                auto_labeler.maybe_save(label_frame, label_boxes, now=start)
             if (offset_x > 0 or offset_y > 0) and boxes:
                 boxes = _offset_boxes(boxes, offset_x, offset_y)
             if smoother is not None:
@@ -184,6 +216,8 @@ def inference_process_target(
                 json_logger.close()
             if saver:
                 saver.close()
+            if auto_labeler:
+                auto_labeler.close()
         except Exception:
             pass
 
@@ -404,6 +438,47 @@ def _offset_boxes(boxes, offset_x: int, offset_y: int):
             )
         )
     return shifted
+
+
+def _auto_label_input(frame_bgr: np.ndarray, boxes, args: RunnerArgs):
+    if args.roi_square:
+        return frame_bgr, boxes
+
+    frame_h, frame_w = frame_bgr.shape[:2]
+    radius = args.roi_radius_px if args.roi_radius_px > 0 else min(frame_w, frame_h) // 3
+    cx, cy = frame_w // 2, frame_h // 2
+    left = max(0, cx - radius)
+    top = max(0, cy - radius)
+    right = min(frame_w, cx + radius)
+    bottom = min(frame_h, cy + radius)
+    cropped = frame_bgr[top:bottom, left:right]
+    return cropped, _clip_boxes_to_region(boxes, left, top, right - left, bottom - top)
+
+
+def _clip_boxes_to_region(boxes, left: int, top: int, width: int, height: int):
+    clipped = []
+    for box in boxes:
+        x1, y1, x2, y2 = box.xyxy
+        nx1 = max(0.0, min(float(width), float(x1) - left))
+        ny1 = max(0.0, min(float(height), float(y1) - top))
+        nx2 = max(0.0, min(float(width), float(x2) - left))
+        ny2 = max(0.0, min(float(height), float(y2) - top))
+        if nx2 - nx1 <= 1.0 or ny2 - ny1 <= 1.0:
+            continue
+        kpts_xy = None
+        if box.kpts_xy is not None:
+            kpts_xy = tuple((kx - left, ky - top) for kx, ky in box.kpts_xy)
+        clipped.append(
+            type(box)(
+                cls_id=box.cls_id,
+                cls_name=box.cls_name,
+                conf=box.conf,
+                xyxy=(nx1, ny1, nx2, ny2),
+                kpts_xy=kpts_xy,
+                kpts_conf=box.kpts_conf,
+            )
+        )
+    return clipped
 
 
 def _apply_auto_capture(args, capturer, last_apply_hz: float, integral: float, fps_drop: float, t_total: float, elapsed: float):

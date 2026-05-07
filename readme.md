@@ -135,13 +135,24 @@ flowchart TB
     RUNTIME --> METRIC
 ```
 
+## Agent Workflow
+
+For larger Codex-assisted changes, this project uses an 8-agent operating
+model documented in [`AGENTS.md`](AGENTS.md) and
+[`docs/subagents.md`](docs/subagents.md).
+
 ## Project Structure
 
 ```text
 cv_capture_detect_v12/
+|-- .agents/
+|-- |-- subagents/                # Reusable 8-agent prompt pack
+|-- AGENTS.md                     # Codex/subagent operating guide
 |-- cvcap/                        # Root shim package so `python -m cvcap` works from project root
 |-- config/
 |-- |-- app_config.json           # Persistent runtime config
+|-- docs/
+|-- |-- subagents.md              # Detailed 8-agent playbook
 |-- media/                        # README assets
 |-- models/                       # .pt / .onnx / .engine model files
 |-- src/

@@ -1,8 +1,13 @@
 ﻿from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from cvcap.core.config import RunnerArgs
+
+DEFAULT_AUTO_LABEL_TRAIN_RATIO = 0.8
+DEFAULT_AUTO_LABEL_VAL_RATIO = 0.2
+DEFAULT_AUTO_LABEL_TEST_RATIO = 0.0
 
 FIELD_GROUPS = [
     {
@@ -30,6 +35,36 @@ FIELD_GROUPS = [
             {"name": "imgsz", "label": "Image Size", "type": "number", "step": 1, "min": 32, "help": "Inference input size. Larger sizes can improve accuracy but increase latency."},
             {"name": "yolo_classes", "label": "YOLO Classes", "type": "text", "placeholder": "0 or 0,2,3", "help": "Optional class filter. Leave blank for all classes. The default 0 means person only."},
             {"name": "yolo_max_det", "label": "Max Detections", "type": "number", "step": 1, "min": 1, "help": "Maximum number of detections kept for each frame."},
+        ],
+    },
+    {
+        "id": "auto_label",
+        "label": "Auto Label",
+        "description": "Collect useful ROI images into a dataset staging area, then annotate and prepare splits after screening.",
+        "fields": [
+            {"name": "auto_label", "label": "Enable Auto Image Capture", "type": "checkbox", "section": "base", "help": "Save clean ROI screenshots only when body/head detections match the collection rules."},
+            {"name": "auto_label_dataset_root", "label": "Dataset Root", "type": "text", "section": "base", "placeholder": "datasets/mirage2", "help": "Dataset folder selected in the UI. Runtime capture saves staged images under this root."},
+            {"name": "auto_label_min_interval_s", "label": "Min Save Interval", "type": "number", "section": "base", "step": 0.05, "min": 1, "help": "Cooldown between saved auto-label samples. Use at least 1 second to avoid near-duplicate frames."},
+            {"name": "auto_label_low_conf_enabled", "label": "Low-Confidence Body", "type": "checkbox", "section": "low_conf", "help": "Capture body detections whose confidence is in the uncertain range."},
+            {"name": "auto_label_low_conf_prob", "label": "Low-Conf Probability", "type": "number", "section": "low_conf", "step": 0.01, "min": 0, "max": 1, "help": "Save probability for uncertain body samples."},
+            {"name": "auto_label_low_conf_min", "label": "Low-Conf Min", "type": "number", "section": "low_conf", "step": 0.01, "min": 0, "max": 1, "help": "Lower confidence bound. The global inference confidence must be no higher than this to see those boxes."},
+            {"name": "auto_label_low_conf_max", "label": "Low-Conf Max", "type": "number", "section": "low_conf", "step": 0.01, "min": 0, "max": 1, "help": "Upper confidence bound for uncertain body samples."},
+            {"name": "auto_label_conflict_enabled", "label": "T/CT Conflict", "type": "checkbox", "section": "conflict", "help": "Capture when T and CT body boxes overlap strongly in the same region."},
+            {"name": "auto_label_conflict_prob", "label": "Conflict Probability", "type": "number", "section": "conflict", "step": 0.01, "min": 0, "max": 1, "help": "Save probability for overlapping T/CT conflict frames."},
+            {"name": "auto_label_conflict_iou", "label": "Conflict IoU", "type": "number", "section": "conflict", "step": 0.01, "min": 0, "max": 1, "help": "Minimum overlap between T and CT boxes to treat as a conflict."},
+            {"name": "auto_label_flip_enabled", "label": "T/CT Frame Flip", "type": "checkbox", "section": "flip", "help": "Capture when a body in the same place changes between T and CT across adjacent frames."},
+            {"name": "auto_label_flip_prob", "label": "Flip Probability", "type": "number", "section": "flip", "step": 0.01, "min": 0, "max": 1, "help": "Save probability for short-term T/CT class flips."},
+            {"name": "auto_label_flip_iou", "label": "Flip IoU", "type": "number", "section": "flip", "step": 0.01, "min": 0, "max": 1, "help": "Minimum overlap with the previous frame body box to treat it as the same target."},
+            {"name": "auto_label_flip_max_age_s", "label": "Flip Max Age", "type": "number", "section": "flip", "step": 0.05, "min": 0, "help": "Maximum seconds between frames for class-flip detection."},
+            {"name": "auto_label_incomplete_enabled", "label": "Incomplete Detection", "type": "checkbox", "section": "incomplete", "help": "Capture frames where body or head is missing."},
+            {"name": "auto_label_incomplete_prob", "label": "Incomplete Probability", "type": "number", "section": "incomplete", "step": 0.01, "min": 0, "max": 1, "help": "Save probability for incomplete body/head detections."},
+            {"name": "auto_label_empty_enabled", "label": "Empty Frames", "type": "checkbox", "section": "empty", "help": "Capture negative samples when no boxes are detected."},
+            {"name": "auto_label_empty_prob", "label": "Empty Probability", "type": "number", "section": "empty", "step": 0.001, "min": 0, "max": 1, "help": "Save probability for empty negative samples."},
+            {"name": "auto_label_complete_enabled", "label": "Complete Samples", "type": "checkbox", "section": "complete", "help": "Capture occasional normal frames where both body and head are detected."},
+            {"name": "auto_label_both_prob", "label": "Complete Probability", "type": "number", "section": "complete", "step": 0.01, "min": 0, "max": 1, "help": "Save probability when both body and head are detected."},
+            {"name": "auto_label_train_ratio", "label": "Train Split", "type": "number", "section": "dataset_tools", "step": 0.01, "min": 0, "max": 1, "help": "Fraction of prepared labeled samples assigned to train."},
+            {"name": "auto_label_val_ratio", "label": "Val Split", "type": "number", "section": "dataset_tools", "step": 0.01, "min": 0, "max": 1, "help": "Fraction of prepared labeled samples assigned to validation."},
+            {"name": "auto_label_test_ratio", "label": "Test Split", "type": "number", "section": "dataset_tools", "step": 0.01, "min": 0, "max": 1, "help": "Optional fraction assigned to test. Leave at 0 when you only need train/val."},
         ],
     },
     {
@@ -77,4 +112,24 @@ FIELD_GROUPS = [
 def config_to_payload(config: RunnerArgs) -> dict:
     payload = asdict(config)
     payload["yolo_classes"] = "" if config.yolo_classes is None else ",".join(str(part) for part in config.yolo_classes)
+    payload["auto_label_dataset_root"] = auto_label_dataset_root(config.auto_label_dir)
+    payload["auto_label_train_ratio"] = DEFAULT_AUTO_LABEL_TRAIN_RATIO
+    payload["auto_label_val_ratio"] = DEFAULT_AUTO_LABEL_VAL_RATIO
+    payload["auto_label_test_ratio"] = DEFAULT_AUTO_LABEL_TEST_RATIO
     return payload
+
+
+def auto_label_dataset_root(auto_label_dir: str) -> str:
+    path = Path(auto_label_dir)
+    if path.suffix.lower() in {".yaml", ".yml", ".txt"}:
+        path = path.parent
+    parts = tuple(part.lower() for part in path.parts)
+    if len(parts) >= 2 and parts[-2:] == ("staging", "images"):
+        return str(path.parent.parent)
+    if path.name.lower() in {"images", "image", "labels"}:
+        if path.parent.name.lower() in {"staging", "train", "val", "valid", "test"}:
+            return str(path.parent.parent)
+        return str(path.parent)
+    if path.name.lower() in {"staging", "train", "val", "valid", "test"}:
+        return str(path.parent)
+    return str(path)

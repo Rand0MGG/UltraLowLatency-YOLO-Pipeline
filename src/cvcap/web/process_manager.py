@@ -108,6 +108,7 @@ class PipelineProcessManager:
                         self._log_lines.append(text)
                     else:
                         self._metrics.append(metric)
+                        self._log_lines.append(text)
         finally:
             try:
                 process.stdout.close()
