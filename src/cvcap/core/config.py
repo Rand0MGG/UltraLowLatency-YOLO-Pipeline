@@ -17,8 +17,11 @@ class RunnerArgs:
     yolo_classes: Optional[Tuple[int, ...]] = (0,)
     yolo_max_det: int = 20
 
-    save_every: float = 0.0
     save_queue: int = 8
+    demo_capture: bool = False
+    demo_capture_dir: str = "debug/demo_frames"
+    demo_capture_interval_s: float = 1.0
+    demo_capture_require_boxes: bool = True
     stats_interval: float = 1.0
     max_run_seconds: float = 0.0
 

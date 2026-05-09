@@ -98,8 +98,11 @@ FIELD_GROUPS = [
         "label": "Output & Smoothing",
         "description": "Saving, stats, and box smoothing controls.",
         "fields": [
-            {"name": "save_every", "label": "Save Every (s)", "type": "number", "step": 0.1, "min": 0, "help": "Save screenshots with detections at a fixed interval. Use 0 to disable automatic saving."},
-            {"name": "save_queue", "label": "Save Queue", "type": "number", "step": 1, "min": 1, "help": "Length of the asynchronous save queue."},
+            {"name": "demo_capture", "label": "Save Demo Frames", "type": "checkbox", "help": "Save annotated demo frames internally, independent of whether the transparent overlay is visible to screen recorders."},
+            {"name": "demo_capture_dir", "label": "Demo Frame Folder", "type": "text", "placeholder": "debug/demo_frames", "help": "Folder where annotated demo frames are written."},
+            {"name": "demo_capture_interval_s", "label": "Demo Frame Interval", "type": "number", "step": 0.1, "min": 0.1, "help": "Minimum seconds between annotated demo frames."},
+            {"name": "demo_capture_require_boxes", "label": "Only Save Frames With Boxes", "type": "checkbox", "help": "Skip empty frames so demo folders only contain useful model-result examples."},
+            {"name": "save_queue", "label": "Save Queue", "type": "number", "step": 1, "min": 1, "help": "Length of the asynchronous save queue used by demo frame saving and auto-label capture."},
             {"name": "stats_interval", "label": "Stats Interval", "type": "number", "step": 0.1, "min": 0.1, "help": "How often runtime statistics are printed to the log."},
             {"name": "smooth", "label": "Enable Smoothing", "type": "checkbox", "help": "Smooth boxes and keypoints to reduce visible jitter."},
             {"name": "smooth_alpha", "label": "Smooth Alpha", "type": "number", "step": 0.01, "min": 0, "max": 1, "help": "Smoothing strength. Higher values are steadier but may feel less responsive."},

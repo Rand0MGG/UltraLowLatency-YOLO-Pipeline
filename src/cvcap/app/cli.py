@@ -27,10 +27,13 @@ def build_parser(defaults: RunnerArgs) -> argparse.ArgumentParser:
     parser.add_argument("--end2end", action=argparse.BooleanOptionalAction, default=defaults.end2end, help="Use YOLO26 end-to-end / NMS-free prediction")
     parser.add_argument("--yolo-classes", type=str, default=defaults.yolo_classes, help="Class filter, for example '0,2,3'")
     parser.add_argument("--yolo-max-det", type=int, default=defaults.yolo_max_det, help="Maximum boxes kept after NMS")
-    parser.add_argument("--save-every", type=float, default=defaults.save_every)
     parser.add_argument("--stats-interval", type=float, default=defaults.stats_interval)
     parser.add_argument("--max-run-seconds", type=float, default=defaults.max_run_seconds)
     parser.add_argument("--save-queue", type=int, default=defaults.save_queue)
+    parser.add_argument("--demo-capture", action=argparse.BooleanOptionalAction, default=defaults.demo_capture, help="Save annotated demo frames rendered from raw frames and detections")
+    parser.add_argument("--demo-capture-dir", type=str, default=defaults.demo_capture_dir, help="Folder for annotated demo frames")
+    parser.add_argument("--demo-capture-interval-s", type=float, default=defaults.demo_capture_interval_s, help="Minimum seconds between annotated demo frames")
+    parser.add_argument("--demo-capture-require-boxes", action=argparse.BooleanOptionalAction, default=defaults.demo_capture_require_boxes, help="Only save demo frames when at least one detection box exists")
     parser.add_argument("--auto-label", action=argparse.BooleanOptionalAction, default=defaults.auto_label, help="Save useful ROI images only; labels can be generated later from the Web panel")
     parser.add_argument("--auto-label-dir", type=str, default=defaults.auto_label_dir, help="Dataset root or staging image folder for auto-captured samples")
     parser.add_argument("--auto-label-incomplete-enabled", action=argparse.BooleanOptionalAction, default=defaults.auto_label_incomplete_enabled)
@@ -101,10 +104,13 @@ def parse_request(argv: list[str] | None = None) -> CliRequest:
         end2end=ns.end2end,
         yolo_classes=_parse_yolo_classes(ns.yolo_classes, defaults.yolo_classes),
         yolo_max_det=ns.yolo_max_det,
-        save_every=ns.save_every,
         stats_interval=ns.stats_interval,
         max_run_seconds=ns.max_run_seconds,
         save_queue=ns.save_queue,
+        demo_capture=ns.demo_capture,
+        demo_capture_dir=ns.demo_capture_dir,
+        demo_capture_interval_s=ns.demo_capture_interval_s,
+        demo_capture_require_boxes=ns.demo_capture_require_boxes,
         auto_label=ns.auto_label,
         auto_label_dir=ns.auto_label_dir,
         auto_label_incomplete_enabled=ns.auto_label_incomplete_enabled,

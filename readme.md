@@ -1,273 +1,451 @@
-﻿# VisionTrace
+# VisionTrace
 
-[中文](#中文说明)
+[English](#english)
 
-> A low-latency Windows screen vision toolkit for high-frequency capture, YOLO/TensorRT inference, transparent overlay rendering, and a configurable local control panel.
+> 面向 Windows 的低延迟屏幕视觉工具链，集成实时采集、YOLO/TensorRT 推理、透明叠加层、演示帧导出和数据集级自动标注流程。
 
-## Overview
+VisionTrace 是一个本地实时视觉系统。它把高频屏幕采集、YOLO/TensorRT 推理、透明叠加层、Web 控制面板、性能日志图表和自动标注数据集工具放在同一个轻量工程里，目标是在真实桌面画面中稳定完成低延迟检测、调参、演示素材生成和数据集迭代。
 
-VisionTrace is a local real-time computer vision system built around screen understanding. It separates capture, inference, visualization, logging, and configuration management into clear modules so the full pipeline stays easier to run, tune, and extend.
+## 模型效果展示
 
-Current highlights:
+下面 9 张图来自 `media/demo1.jpg` 到 `media/demo9.jpg`，展示公开模型在实际画面中的检测效果。当前模型重点覆盖 body/head 目标识别、远近尺度变化、局部遮挡和复杂背景下的稳定输出。
 
-- Unified runtime entry: `python -m cvcap`
-- Web control panel for config editing, start/stop, status, and logs
-- Default model: `models/yolo26l-pose.engine`
-- YOLO26 uses the default end-to-end / NMS-free prediction path
-- Default class filter: person only (`class 0`)
-- ROI cropping, adaptive capture, smoothing, transparent overlay, and async saving
-- Parsed performance logs rendered as live charts in the frontend
+<table>
+  <tr>
+    <td><img src="media/demo1.jpg" alt="VisionTrace demo 1"></td>
+    <td><img src="media/demo2.jpg" alt="VisionTrace demo 2"></td>
+    <td><img src="media/demo3.jpg" alt="VisionTrace demo 3"></td>
+  </tr>
+  <tr>
+    <td><img src="media/demo4.jpg" alt="VisionTrace demo 4"></td>
+    <td><img src="media/demo5.jpg" alt="VisionTrace demo 5"></td>
+    <td><img src="media/demo6.jpg" alt="VisionTrace demo 6"></td>
+  </tr>
+  <tr>
+    <td><img src="media/demo7.jpg" alt="VisionTrace demo 7"></td>
+    <td><img src="media/demo8.jpg" alt="VisionTrace demo 8"></td>
+    <td><img src="media/demo9.jpg" alt="VisionTrace demo 9"></td>
+  </tr>
+</table>
 
-## Demos
+颜色约定：
 
-### ROI Enabled
+- `head`: 红色框
+- `ct_body`: 蓝色框
+- `t_body`: 白色框
+- 其他类别: 绿色框
 
-With ROI enabled, the system processes only the center region of the screen, which usually reduces unnecessary computation and improves responsiveness in the main target area.
+## 公开权重与模型性能
 
-![ROI Enabled Demo](media/1.gif)
+公开权重：
 
-### ROI Disabled
+```text
+yolo26l_mix_dust2_mirage_736.pt
+```
 
-With ROI disabled, the system processes a larger screen area and preserves more visual context.
+下载方式：在项目 [Releases](https://github.com/Rand0MGG/VisionTrace/releases) 页面获取同名权重文件，并放入本地 `models/` 目录。
 
-![ROI Disabled Demo](media/2.gif)
+`yolo26l_mix_dust2_mirage_736.pt` 是 VisionTrace 推荐的公开权重。它基于 YOLO26L 训练，输入尺寸为 `736`，面向 Counter-Strike 实战画面中的三类目标：`ct_body`、`t_body` 和 `head`。训练数据来自 `dust2`、`mirage` 与 `mix` 数据集，重点覆盖远近尺度变化、局部遮挡、复杂背景和 body/head 组合检测。
 
-### Config Panel
+在验证集上，该模型取得 `0.939` 的 Best mAP50、`0.690` 的 Best mAP50-95、`0.959` 的 Best Precision 和 `0.903` 的 Best Recall。最终轮指标保持在 `0.935` mAP50、`0.687` mAP50-95、`0.944` Precision 和 `0.888` Recall，适合作为实时检测、演示帧生成和自动标注起点。
 
-The frontend supports persistent configuration, language switching, command preview, and one-click start/stop.
+验证结果摘要：
 
-![Config Page](media/3.png)
+| 指标 | 数值 |
+|---|---:|
+| Best mAP50 | 0.939 |
+| Best mAP50-95 | 0.690 |
+| Best Precision | 0.959 |
+| Best Recall | 0.903 |
+| Final Precision | 0.944 |
+| Final Recall | 0.888 |
+| Final mAP50 | 0.935 |
+| Final mAP50-95 | 0.687 |
 
-### Logs Panel: Charts
+训练配置摘要：
 
-The upper half of the logs page turns runtime `FLOW` lines into live charts so throughput, latency, and dropped-frame behavior can be inspected visually instead of reading raw logs.
+| 项目 | 配置 |
+|---|---|
+| Base model | YOLO26L |
+| Image size | 736 |
+| Epochs | 200 |
+| Batch size | 8 |
+| Classes | `ct_body`, `t_body`, `head` |
+| Dataset mix | `mix` + `dust2` + `mirage` |
 
-![Logs Charts](media/4.png)
+## Web 控制面板
 
-### Logs Panel: Text Output
+VisionTrace 提供本地 Web 面板，用来配置、启动、停止、查看状态和分析日志。
 
-Non-performance logs are kept in a scrollable text output area below the charts, so long sessions do not stretch the whole page.
+| 配置页面 | 性能图表 | 文本日志 |
+|---|---|---|
+| ![Config panel](media/3.png) | ![Runtime charts](media/4.png) | ![Runtime logs](media/5.png) |
 
-![Logs Text Output](media/5.png)
+面板支持：
 
-## Features
+- 选择模型、显示器、推理设备和输入尺寸
+- 切换 ROI、自动采集频率、平滑和透明叠加层
+- 启动、停止和查看本地运行进程状态
+- 将 `FLOW` 性能日志解析成延迟、吞吐和掉帧图表
+- 保存内部合成的带框演示帧，解决录屏软件无法捕获透明叠加层的问题
+- 以数据集为单位准备、标注、规范化、打乱和合并自动标注数据
 
-- High-frequency Windows screen capture powered by `dxcam`
-- Multi-process separation for capture, inference, and rendering
-- Shared-memory frame transport
-- Ultralytics and TensorRT inference support
-- Default person-only detection flow
-- Transparent overlay visualization
-- Optional ROI cropping
-- Optional adaptive capture-rate control
-- Optional smoothing
-- Web UI for config, runtime status, and logs
-- Persistent JSON config storage
+## 核心能力
 
-## Pipeline Flow
+- 高频 Windows 屏幕采集，基于 `dxcam`
+- 多进程采集、推理、渲染解耦
+- 共享内存传帧，减少不必要的数据复制
+- 支持 Ultralytics `.pt`、ONNX 和 TensorRT `.engine`
+- 支持 YOLO26 end-to-end / NMS-free 推理路径
+- 支持中心 ROI，适合低延迟聚焦场景
+- 支持透明叠加层实时显示
+- 支持内部合成带框演示帧
+- 支持自动调节采集频率，降低积压和延迟
+- 支持自动收图、批量自动标注、train/val/test 切分和数据集合并
+- 支持中英文 Web UI 和持久化 JSON 配置
+
+## 快速开始
+
+推荐环境：
+
+```bash
+conda activate cvcap
+pip install -r requirements.txt
+```
+
+启动 Web 面板：
+
+```bash
+python -m cvcap.web --port 8772 --no-open
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8772
+```
+
+命令行直接运行：
+
+```bash
+python -m cvcap
+```
+
+常用命令示例：
+
+```bash
+python -m cvcap --vis
+python -m cvcap --capture-hz 120 --roi-square
+python -m cvcap --auto-capture --target-drop-fps 4.0
+python -m cvcap --smooth --smooth-alpha 0.6
+```
+
+保存带框演示帧：
+
+```bash
+python -m cvcap --demo-capture --demo-capture-dir debug/demo_frames --demo-capture-interval-s 1.0
+```
+
+默认只保存有检测框的帧。输出图片由程序内部把原始画面和检测框合成，适合制作 README、演示视频素材和模型效果回看。
+
+## 模型使用建议
+
+推荐使用公开权重开始：
+
+```text
+models/yolo26l_mix_dust2_mirage_736.pt
+```
+
+常见工作流：
+
+1. 从 Releases 下载 `yolo26l_mix_dust2_mirage_736.pt`
+2. 将权重放入 `models/`
+3. 在 Web 面板中选择该 `.pt` 权重并先跑通实时检测
+4. 需要更低延迟时，在本机环境中导出 TensorRT `.engine`
+5. 根据实际画面调 `imgsz`、`conf`、`yolo_classes`、ROI 和采集频率
+
+TensorRT 导出示例：
+
+```bash
+python -c "from ultralytics import YOLO; YOLO('models/yolo26l_mix_dust2_mirage_736.pt').export(format='engine', imgsz=736, half=True, device=0)"
+```
+
+## 自动标注与数据集工作流
+
+自动标注模块以数据集根目录为操作对象。比如选择：
+
+```text
+datasets/mirage2
+```
+
+程序会围绕这个数据集根目录识别或创建：
+
+```text
+datasets/mirage2/
+|-- data.yaml
+|-- classes.txt
+|-- staging/
+|-- |-- images/
+|-- train/
+|-- |-- images/
+|-- |-- labels/
+|-- val/
+|-- |-- images/
+|-- |-- labels/
+|-- test/
+|-- |-- images/
+|-- |-- labels/
+```
+
+推荐流程：
+
+1. 在 Web 面板选择或输入数据集根目录，例如 `datasets/mirage2`
+2. 开启自动收图，运行时图片先进入 `staging/images`
+3. 人工筛查暂存图片，删除不需要的样本
+4. 点击“准备 / 切分数据集”，按比例打乱并分配到 `train`、`val`、`test`
+5. 使用当前模型批量写出 YOLO label
+6. 需要时点击“规范化数据集”，统一图片和标签命名
+7. 对单个 `train`、`val` 或 `test` 点击“打乱单个划分”，图片和对应标签会绑定操作并重新命名
+8. 当新数据集可训练后，点击“合并数据集”，把源数据集合并进目标数据集
+
+数据集命名规则：
+
+```text
+<dataset>_<split>_<index>.jpg
+<dataset>_<split>_<index>.txt
+```
+
+例如：
+
+```text
+mirage_train_000000.jpg
+mirage_train_000000.txt
+mirage_val_000000.jpg
+mirage_val_000000.txt
+```
+
+默认类别名：
+
+```text
+ct_body
+t_body
+head
+```
+
+如果源数据集和目标数据集都存在类别配置，合并时会检查类别名是否一致，避免把不兼容标签混进同一个训练集。
+
+## 运行流程
 
 ```mermaid
 flowchart LR
-    A["Screen / Monitor"] --> B["dxcam Capture"]
-    B --> C["Shared Memory Buffer"]
-    C --> D["Inference Process"]
-    D --> E["Detections / Keypoints"]
-    E --> F["Overlay Renderer"]
-    E --> G["Metrics & Logs"]
-    E --> H["Optional Saver"]
+    A["屏幕 / 显示器"] --> B["dxcam 采集"]
+    B --> C["共享内存缓冲"]
+    C --> D["YOLO / TensorRT 推理"]
+    D --> E["检测结果"]
+    E --> F["透明叠加层"]
+    E --> G["演示帧导出"]
+    E --> H["自动收图"]
+    E --> I["指标与日志"]
 ```
 
-## Frontend / Backend Flow
+## Web 与运行时关系
 
 ```mermaid
 flowchart TD
-    UI["Web UI"] --> API["FastAPI Server"]
+    UI["Web UI"] --> API["FastAPI 服务"]
     API --> CFG["config/app_config.json"]
-    API --> PM["Process Manager"]
-    PM --> RUN["python -m cvcap --config ..."]
-    RUN --> CAP["Capture"]
-    RUN --> INF["Inference"]
-    RUN --> OVL["Overlay"]
-    RUN --> LOG["Runtime Logs"]
+    API --> PM["进程管理器"]
+    PM --> RUN["python -m cvcap"]
+    RUN --> CAP["采集进程"]
+    RUN --> INF["推理进程"]
+    RUN --> OVL["叠加层进程"]
+    RUN --> LOG["运行日志"]
     LOG --> API
     API --> UI
 ```
 
-## Architecture
+## 关键参数
 
-```mermaid
-flowchart TB
-    subgraph UI["UI Layer"]
-        WEB["Web Panel"]
-        CLI["CLI Entry"]
-    end
+| 参数 | 作用 |
+|---|---|
+| `model` | 使用的 `.pt`、`.onnx` 或 `.engine` 模型 |
+| `device` | 推理设备，例如 `cuda:0` 或 `cpu` |
+| `capture_hz` | 目标屏幕采集频率 |
+| `imgsz` | 推理输入尺寸 |
+| `conf` | 检测置信度阈值 |
+| `iou` | NMS IoU 阈值 |
+| `yolo_classes` | 类别过滤，留空表示不过滤 |
+| `roi_square` | 是否启用中心 ROI |
+| `roi_radius_px` | ROI 半径 |
+| `visualize` | 是否显示透明叠加层 |
+| `demo_capture` | 是否保存内部合成的带框演示帧 |
+| `auto_capture` | 是否启用自动采集频率控制 |
+| `smooth` | 是否启用检测框平滑 |
+| `auto_label_dataset_root` | Web 面板中选择的数据集根目录 |
+| `auto_label_min_interval_s` | 自动收图最小间隔 |
 
-    subgraph APP["Application Layer"]
-        RUNTIME["Runtime Orchestration"]
-    end
-
-    subgraph CORE["Core Layer"]
-        CONFIG["Config / Types / Errors"]
-    end
-
-    subgraph ADAPTERS["Adapter Layer"]
-        CAP["dxcam Capture Adapter"]
-        DET["YOLO / TensorRT Adapter"]
-    end
-
-    subgraph RUNTIME2["Runtime Services"]
-        SHM["Shared Buffer"]
-        OVL["Overlay"]
-        SMOOTH["Smoothing"]
-        SAVE["Saving"]
-        METRIC["Metrics / Logs"]
-    end
-
-    WEB --> RUNTIME
-    CLI --> RUNTIME
-    RUNTIME --> CONFIG
-    RUNTIME --> CAP
-    RUNTIME --> DET
-    RUNTIME --> SHM
-    RUNTIME --> OVL
-    RUNTIME --> SMOOTH
-    RUNTIME --> SAVE
-    RUNTIME --> METRIC
-```
-
-## Agent Workflow
-
-For larger Codex-assisted changes, this project uses an 8-agent operating
-model documented in [`AGENTS.md`](AGENTS.md) and
-[`docs/subagents.md`](docs/subagents.md).
-
-## Project Structure
+## 项目结构
 
 ```text
-cv_capture_detect_v12/
-|-- .agents/
-|-- |-- subagents/                # Reusable 8-agent prompt pack
-|-- AGENTS.md                     # Codex/subagent operating guide
-|-- cvcap/                        # Root shim package so `python -m cvcap` works from project root
-|-- config/
-|-- |-- app_config.json           # Persistent runtime config
-|-- docs/
-|-- |-- subagents.md              # Detailed 8-agent playbook
-|-- media/                        # README assets
-|-- models/                       # .pt / .onnx / .engine model files
+VisionTrace/
+|-- cvcap/                         # Root shim package
+|-- config/                        # Local runtime config
+|-- docs/                          # Project docs
+|-- media/                         # README images
+|-- models/                        # Local model files used at runtime
 |-- src/
 |-- |-- cvcap/
-|-- |-- |-- app/
-|-- |-- |-- |-- cli.py            # CLI argument parsing and entrypoint
-|-- |-- |-- |-- runtime.py        # Main runtime orchestration
-|-- |-- |-- core/
-|-- |-- |-- |-- config.py         # RunnerArgs
-|-- |-- |-- |-- config_store.py   # Config load/save
-|-- |-- |-- |-- detections.py     # Detection data types
-|-- |-- |-- |-- errors.py         # Runtime error definitions
-|-- |-- |-- adapters/
-|-- |-- |-- |-- capture/
-|-- |-- |-- |-- |-- dxcam_capture.py
-|-- |-- |-- |-- inference/
-|-- |-- |-- |-- |-- ultralytics_detector.py
-|-- |-- |-- runtime/
-|-- |-- |-- |-- shared_buffer.py
-|-- |-- |-- |-- overlay.py
-|-- |-- |-- |-- drawing.py
-|-- |-- |-- |-- smoothing.py
-|-- |-- |-- |-- metrics.py
-|-- |-- |-- |-- saving.py
-|-- |-- |-- |-- logging_jsonl.py
-|-- |-- |-- web/
-|-- |-- |-- |-- server.py
-|-- |-- |-- |-- process_manager.py
-|-- |-- |-- |-- forms.py
-|-- |-- |-- |-- static/
-|-- |-- |-- |-- |-- index.html
-|-- |-- |-- |-- |-- styles.css
-|-- |-- |-- |-- |-- app.js
-|-- |-- |-- __main__.py
-|-- tools/
-|-- |-- test_capture_frame.py
+|-- |-- |-- app/                   # CLI and runtime orchestration
+|-- |-- |-- adapters/              # Capture and inference adapters
+|-- |-- |-- core/                  # Config, detections, errors
+|-- |-- |-- runtime/               # Shared buffer, overlay, saving, metrics, auto-label
+|-- |-- |-- web/                   # FastAPI server and static frontend
+|-- tools/                         # Local debugging tools
 ```
 
-## Environment
+## 性能调优提示
+
+- `Wait` 高：通常说明采集供帧或进程同步在拖慢链路
+- `GPU` 高：通常说明推理是瓶颈，可以尝试 TensorRT、降低 `imgsz` 或启用 ROI
+- `Ovhd` 高：通常说明 Python 调度、日志、绘制或后台负载需要检查
+- ROI 适合目标主要出现在屏幕中心的场景
+- 自动采集频率适合长时间运行时抑制积压
+- 演示帧保存是异步写盘，建议只在需要素材时打开
+
+## 常见问题
+
+**为什么录屏看不到框？**
+
+部分录屏方式不会捕获透明 overlay 窗口。开启 `Save Demo Frames` 或命令行 `--demo-capture`，程序会内部合成带框图片并保存到 `debug/demo_frames`。
+
+**数据集按钮会直接改我正在选择的输出目录吗？**
+
+数据集工具以用户选择的数据集根目录或划分目录为对象。准备、规范化、打乱、合并都会保持图片和对应 label 绑定处理，避免图像和标注错位。
+
+**`test` 比例可以为 0 吗？**
+
+可以。只需要 train/val 时保持 `test=0` 即可。
+
+## 许可证
+
+本仓库使用自定义非商用许可证，见 [LICENSE](LICENSE)。
+
+简要来说：
+
+- 可以阅读、修改、分发源码
+- 默认禁止商业使用
+- 商业用途需要单独授权
+
+## 免责声明
+
+VisionTrace 面向计算机视觉工程、本地监测、实验、演示、数据集整理和研究用途。请遵守适用法律、平台规则和使用环境的授权要求。
+
+---
+
+## English
+
+> A low-latency Windows screen vision toolkit for real-time capture, YOLO/TensorRT inference, transparent overlay rendering, demo-frame export, and dataset-oriented auto-label workflows.
+
+VisionTrace is a local real-time computer vision system for screen understanding. It combines high-frequency screen capture, YOLO/TensorRT inference, a transparent overlay, a local Web control panel, live performance charts, and dataset-level auto-label tools in one lightweight project.
+
+## Model Gallery
+
+The 9 images at the top of this README, `media/demo1.jpg` through `media/demo9.jpg`, show the public model on real frames. They highlight body/head detection, scale variation, partial occlusion, and stable output in visually complex scenes.
+
+Current box colors:
+
+- `head`: red
+- `ct_body`: blue
+- `t_body`: white
+- Other classes: green
+
+## Public Weights And Model Performance
+
+Public weight:
+
+```text
+yolo26l_mix_dust2_mirage_736.pt
+```
+
+Download it from the project [Releases](https://github.com/Rand0MGG/VisionTrace/releases) page as the asset with the same filename, then place it under the local `models/` directory.
+
+`yolo26l_mix_dust2_mirage_736.pt` is the recommended public VisionTrace weight. It is a YOLO26L detector trained at `736` input size for three Counter-Strike scene classes: `ct_body`, `t_body`, and `head`. The training data comes from the `dust2`, `mirage`, and `mix` datasets, with coverage for scale variation, partial occlusion, complex backgrounds, and paired body/head detection.
+
+On the validation set, the model reaches `0.939` Best mAP50, `0.690` Best mAP50-95, `0.959` Best Precision, and `0.903` Best Recall. The final epoch remains strong at `0.935` mAP50, `0.687` mAP50-95, `0.944` Precision, and `0.888` Recall, making it a practical starting point for real-time detection, demo-frame generation, and auto-label workflows.
+
+Validation summary:
+
+| Metric | Value |
+|---|---:|
+| Best mAP50 | 0.939 |
+| Best mAP50-95 | 0.690 |
+| Best Precision | 0.959 |
+| Best Recall | 0.903 |
+| Final Precision | 0.944 |
+| Final Recall | 0.888 |
+| Final mAP50 | 0.935 |
+| Final mAP50-95 | 0.687 |
+
+Training summary:
+
+| Item | Value |
+|---|---|
+| Base model | YOLO26L |
+| Image size | 736 |
+| Epochs | 200 |
+| Batch size | 8 |
+| Classes | `ct_body`, `t_body`, `head` |
+| Dataset mix | `mix` + `dust2` + `mirage` |
+
+## Web Control Panel
+
+VisionTrace includes a local Web panel for configuration, process control, status inspection, and runtime log analysis.
+
+The panel supports:
+
+- Model, monitor, device, and image-size selection
+- ROI, adaptive capture rate, smoothing, and transparent overlay controls
+- Start, stop, and status controls for the local runtime process
+- Parsed `FLOW` performance logs rendered as latency, throughput, and dropped-frame charts
+- Internally rendered demo-frame saving for recorders that cannot capture transparent overlays
+- Dataset-root based auto-label preparation, annotation, normalization, split shuffle, and merge tools
+
+## Highlights
+
+- High-frequency Windows screen capture via `dxcam`
+- Multi-process capture, inference, and rendering
+- Shared-memory frame transport to avoid unnecessary copies
+- Ultralytics `.pt`, ONNX, and TensorRT `.engine` support
+- YOLO26 end-to-end / NMS-free inference path
+- Center ROI support for focused low-latency use cases
+- Real-time transparent overlay visualization
+- Internal annotated demo-frame export
+- Adaptive capture-rate control to reduce backlog and latency
+- Auto image collection, batch auto-annotation, train/val/test splitting, and dataset merging
+- Bilingual Web UI and persistent JSON configuration
+
+## Quick Start
 
 Recommended environment:
 
 ```bash
 conda activate cvcap
-```
-
-Suggested setup:
-
-- Windows desktop environment
-- Python 3.10
-- Working `dxcam`
-- Installed PyTorch / Ultralytics / PyQt5 / FastAPI dependencies
-- Valid local model files
-- Matching TensorRT runtime if `.engine` models are used
-
-## Quick Start
-
-### 1. Install dependencies
-
-Use the cleaned runtime dependency list:
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 2. Get a YOLO pose model
-
-For beginners, the easiest path is to start from the official Ultralytics pose models and then export them.
-
-Official references:
-
-- [Ultralytics pose task docs](https://docs.ultralytics.com/tasks/pose/)
-- [Ultralytics YOLO26 docs](https://docs.ultralytics.com/models/yolo26/)
-- [Ultralytics export docs](https://docs.ultralytics.com/modes/export/)
-- [Ultralytics assets releases](https://github.com/ultralytics/assets/releases)
-
-According to the official docs, Ultralytics pose models download automatically from the latest official assets release on first use. In practice, you can do either of these:
+Start the Web panel:
 
 ```bash
-# Option A: let Ultralytics download automatically on first use
-python -c "from ultralytics import YOLO; YOLO('yolo26l-pose.pt')"
-
-# Option B: download the .pt file manually from the official assets release page
-# and place it under models/
+python -m cvcap.web --port 8772 --no-open
 ```
 
-Recommended starting point for this project:
+Open:
 
 ```text
-models/yolo26l-pose.pt
+http://127.0.0.1:8772
 ```
 
-### 3. Export `.pt` to TensorRT `.engine`
-
-If you want lower latency on a compatible NVIDIA setup, export the pose model to TensorRT.
-
-Official Ultralytics export examples show the same export flow for ONNX and TensorRT-style formats. For this project, a typical export command is:
-
-```bash
-python -c "from ultralytics import YOLO; YOLO('models/yolo26l-pose.pt').export(format='engine', imgsz=736, half=True, device=0)"
-```
-
-After export, place or keep the generated file here:
-
-```text
-models/yolo26l-pose.engine
-```
-
-Notes:
-
-- Export requires a working NVIDIA CUDA + TensorRT environment
-- Exported engines are often hardware and software version sensitive
-- If you switch GPU, CUDA, TensorRT, or major driver stack, you may need to export again
-
-### 4. Run the pipeline from CLI
+Run directly from CLI:
 
 ```bash
 python -m cvcap
@@ -282,137 +460,178 @@ python -m cvcap --auto-capture --target-drop-fps 4.0
 python -m cvcap --smooth --smooth-alpha 0.6
 ```
 
-### 5. Run the Web panel
+Save annotated demo frames:
 
 ```bash
-python -m cvcap.web --port 8772 --no-open
+python -m cvcap --demo-capture --demo-capture-dir debug/demo_frames --demo-capture-interval-s 1.0
 ```
 
-Then open:
+By default, VisionTrace only saves frames with detections. The output images are rendered internally from the raw frame and detection boxes, making them useful for README assets, demo videos, and model-result review.
+
+## Model Notes
+
+Start with the public weight:
 
 ```text
-http://127.0.0.1:8772
+models/yolo26l_mix_dust2_mirage_736.pt
 ```
 
-You can use the web panel to:
+Typical workflow:
 
-- Edit runtime parameters
-- Save them to `config/app_config.json`
-- Start and stop the pipeline
-- Check runtime status
-- Inspect parsed logs and charts
-- Switch between Chinese and English UI
+1. Download `yolo26l_mix_dust2_mirage_736.pt` from Releases
+2. Place it under `models/`
+3. Select the `.pt` weight in the Web panel and verify real-time detection first
+4. Export a TensorRT `.engine` locally when you want lower latency
+5. Tune `imgsz`, `conf`, `yolo_classes`, ROI, and capture rate for your scene
 
-## Log Parsing and Visualization
+TensorRT export example:
 
-VisionTrace does not simply dump raw runtime output into the browser.
+```bash
+python -c "from ultralytics import YOLO; YOLO('models/yolo26l_mix_dust2_mirage_736.pt').export(format='engine', imgsz=736, half=True, device=0)"
+```
 
-The frontend parses `FLOW` lines like this:
+## Auto-Label And Dataset Workflow
+
+The auto-label module is designed around dataset roots. For example, choose:
 
 ```text
-FLOW: Grab=120.8 Proc=118.8 Drop=2.0 Cmd=120.0Hz | TIME(ms): Wait=1.1 + Total=7.1 (Pre=1.6 GPU=4.6 Post=0.6 Ovhd=0.3)
+datasets/mirage2
 ```
 
-These values are extracted and turned into live charts:
+VisionTrace will recognize or create the dataset layout:
 
-- `Latency`: `Wait`, `Total`, `Pre`, `GPU`, `Post`, `Ovhd`
-- `Throughput`: `Grab FPS`, `Proc FPS`, `Cmd Hz`
-- `Drop FPS`: dropped-frame behavior on its own scale
+```text
+datasets/mirage2/
+|-- data.yaml
+|-- classes.txt
+|-- staging/
+|-- |-- images/
+|-- train/
+|-- |-- images/
+|-- |-- labels/
+|-- val/
+|-- |-- images/
+|-- |-- labels/
+|-- test/
+|-- |-- images/
+|-- |-- labels/
+```
 
-Design choices in the current UI:
+Recommended workflow:
 
-- Performance lines are removed from the plain text log area after parsing
-- The text output keeps only non-`FLOW` logs
-- The log text area is scrollable and height-limited, so long sessions do not stretch the whole page
-- The charts use a dynamic Y-axis based on recent samples, but never go below `0`
-- The X-axis keeps a fixed recent sample window for stable visual comparison
+1. Select or enter a dataset root in the Web panel, such as `datasets/mirage2`
+2. Enable auto image capture, which stores runtime images under `staging/images`
+3. Review staged images manually and delete unwanted samples
+4. Click `Prepare / Split Dataset` to shuffle and assign images to `train`, `val`, and `test`
+5. Use the current model to batch-write YOLO labels
+6. Click `Normalize Dataset` when you want consistent image and label names
+7. Click `Shuffle Split` on a single `train`, `val`, or `test` split to shuffle images and labels together
+8. After the new dataset is train-ready, merge the source dataset into the target dataset
 
-## Defaults
+Dataset naming rule:
 
-- Default model: `models/yolo26l-pose.engine`
-- Default prediction path: YOLO26 end-to-end / NMS-free
-- Default class filter: `0` for person only
-- Runtime parameters are persisted in `config/app_config.json`
+```text
+<dataset>_<split>_<index>.jpg
+<dataset>_<split>_<index>.txt
+```
+
+Example:
+
+```text
+mirage_train_000000.jpg
+mirage_train_000000.txt
+mirage_val_000000.jpg
+mirage_val_000000.txt
+```
+
+Default class names:
+
+```text
+ct_body
+t_body
+head
+```
+
+If both the source and target datasets define class names, merge checks that they match before copying labels into the target dataset.
+
+## Runtime Flow
+
+```mermaid
+flowchart LR
+    A["Screen / Monitor"] --> B["dxcam Capture"]
+    B --> C["Shared Memory Buffer"]
+    C --> D["YOLO / TensorRT Inference"]
+    D --> E["Detections"]
+    E --> F["Transparent Overlay"]
+    E --> G["Demo Frame Export"]
+    E --> H["Auto Label Capture"]
+    E --> I["Metrics & Logs"]
+```
+
+## Web And Runtime
+
+```mermaid
+flowchart TD
+    UI["Web UI"] --> API["FastAPI Server"]
+    API --> CFG["config/app_config.json"]
+    API --> PM["Process Manager"]
+    PM --> RUN["python -m cvcap"]
+    RUN --> CAP["Capture Process"]
+    RUN --> INF["Inference Process"]
+    RUN --> OVL["Overlay Process"]
+    RUN --> LOG["Runtime Logs"]
+    LOG --> API
+    API --> UI
+```
 
 ## Key Parameters
 
 | Parameter | Purpose |
 |---|---|
+| `model` | `.pt`, `.onnx`, or `.engine` model file |
+| `device` | Inference device such as `cuda:0` or `cpu` |
 | `capture_hz` | Target screen capture rate |
-| `model` | Model file used for inference |
-| `device` | Inference device such as `cuda:0` |
-| `visualize` | Enable transparent overlay |
-| `max_run_seconds` | Maximum runtime, `0` means keep running |
-| `conf` | Confidence threshold |
+| `imgsz` | Inference input size |
+| `conf` | Detection confidence threshold |
 | `iou` | NMS IoU threshold |
-| `imgsz` | Inference image size |
-| `yolo_classes` | Class filter, default `0` means person only |
-| `roi_square` | Enable centered ROI |
+| `yolo_classes` | Optional class filter, blank means all classes |
+| `roi_square` | Enable center ROI |
 | `roi_radius_px` | ROI radius |
-| `auto_capture` | Enable adaptive capture control |
-| `smooth` | Enable smoothing |
-
-## Recommended First Run Path
-
-For someone who just landed on this repository, the smoothest first-run flow is:
-
-1. Create or activate a Windows Python environment
-2. Install dependencies from `requirements.txt`
-3. Download or auto-fetch `yolo26l-pose.pt` from official Ultralytics sources
-4. Export it to `models/yolo26l-pose.engine` if TensorRT is available
-5. Start the web panel with `python -m cvcap.web --port 8772 --no-open`
-6. Open the browser, check config, and run with visualization enabled
-7. If needed, fall back to `.pt` first, then optimize to `.engine` after everything works
-
-## ROI Guidance
-
-Use ROI when:
-
-- You mainly care about the center region of the screen
-- You want lower inference cost
-- You want better responsiveness in a focused area
-
-Disable ROI when:
-
-- You need full-screen context
-- Targets may appear near the edges
-- Coverage matters more than raw latency
+| `visualize` | Show transparent overlay |
+| `demo_capture` | Save internally rendered annotated demo frames |
+| `auto_capture` | Enable adaptive capture-rate control |
+| `smooth` | Enable detection smoothing |
+| `auto_label_dataset_root` | Dataset root selected in the Web panel |
+| `auto_label_min_interval_s` | Minimum interval between auto-captured samples |
 
 ## Performance Notes
 
-- High `Wait` usually means capture is the bottleneck
-- High `GPU` usually means inference is the bottleneck
-- High `Ovhd` usually means Python scheduling or background load is too high
-- ROI often improves frame stability and end-to-end responsiveness
-- Keeping `yolo_classes=0` reduces unrelated detections in person-only scenarios
+- High `Wait` often means capture supply or process synchronization is slowing the pipeline
+- High `GPU` often means inference is the bottleneck
+- High `Ovhd` usually points to Python scheduling, logging, drawing, or background load
+- ROI works best when targets mostly appear near the center of the screen
+- Adaptive capture rate helps suppress backlog during long runs
+- Demo-frame saving is asynchronous, so enable it when you need output assets
 
-## Known Notes
+## FAQ
 
-- If `dxcam` access fails, the current Windows session may be blocking Desktop Duplication
-- If a `.engine` file fails to load, verify TensorRT compatibility
-- If a `.pt` file is corrupted, Ultralytics will fail during model load
-- If `max_run_seconds > 0`, the program will stop automatically by design
+**Why are boxes missing from my screen recording?**
 
-## Use Cases
+Some recorders do not capture transparent overlay windows. Enable `Save Demo Frames` or pass `--demo-capture`; VisionTrace will render annotated images internally and save them under `debug/demo_frames`.
 
-- Real-time local vision experiments
-- Human target sensing on screen output
-- Pose estimation validation
-- Low-latency capture / inference pipeline research
-- Interactive runtime tuning and performance analysis
+**Do dataset tools keep images and labels synchronized?**
 
-## Output Locations
+Yes. Prepare, normalize, split shuffle, and merge operations are designed to move or rename images together with their matching YOLO label files.
 
-- `config/`: persistent config files
-- `debug/`: runtime debug logs
-- `models/`: model files
-- `media/`: README assets
+**Can the `test` ratio be 0?**
+
+Yes. Keep `test=0` if you only need train/val splits.
 
 ## License
 
 This repository uses a custom noncommercial license. See [LICENSE](LICENSE).
 
-That means:
+In short:
 
 - source code is visible and shareable
 - modification is allowed
@@ -420,420 +639,4 @@ That means:
 
 ## Disclaimer
 
-This repository is intended for computer vision engineering, local monitoring, experimentation, demos, and research. Do not use it for cheating, malware, or abusive behavior.
-
----
-
-## 中文说明
-
-[English](#visiontrace)
-
-> 面向 Windows 的低延迟屏幕视觉检测与姿态分析工具，集成高频采集、YOLO/TensorRT 推理、透明悬浮层显示，以及可视化本地控制面板。
-
-## 项目简介
-
-VisionTrace 是一个围绕“屏幕画面实时感知”设计的本地视觉系统。它将采集、推理、可视化、日志与配置管理拆分为清晰的模块，目标是在尽量低延迟的前提下，稳定地完成人物检测与姿态推理。
-
-当前版本的重点能力：
-
-- 统一入口为 `python -m cvcap`
-- 新增 Web 控制面板，支持保存配置、启动、停止、查看状态与日志
-- 默认模型为 `models/yolo26l-pose.engine`
-- 默认使用 YOLO26 end-to-end / NMS-free 推理路径
-- 默认类别过滤固定为人物 `class 0`
-- 支持 ROI 裁剪、自动调速、平滑、透明悬浮层、异步保存
-- 前端可把性能日志解析成实时折线图
-
-## 效果展示
-
-### 开启 ROI
-
-开启中心 ROI 后，只处理屏幕中央区域，通常可以减少不必要的计算开销，并提升目标区域的响应速度。
-
-![ROI Enabled Demo](media/1.gif)
-
-### 关闭 ROI
-
-关闭 ROI 后，将对更大范围的屏幕区域进行处理，更适合需要保留完整上下文的场景。
-
-![ROI Disabled Demo](media/2.gif)
-
-### 配置页面
-
-前端支持参数持久化、语言切换、命令预览与一键启动。
-
-![Config Page](media/3.png)
-
-### 日志页面：图表部分
-
-日志页的上半部分会把 `FLOW` 性能日志解析成动态图表，方便快速看清时延、吞吐和掉帧变化。
-
-![Logs Charts](media/4.png)
-
-### 日志页面：文本部分
-
-日志页的下半部分保留非性能类文本日志，并限制高度、支持滚动，避免长时间运行把页面撑得过长。
-
-![Logs Text Output](media/5.png)
-
-## 核心特性
-
-- `dxcam` 驱动的高频 Windows 屏幕采集
-- 多进程采集 / 推理 / 渲染解耦
-- 共享内存低开销传帧
-- 支持 Ultralytics 与 TensorRT 推理
-- 默认只识别人，适合人体目标与姿态分析
-- 支持透明悬浮层可视化
-- 支持可选 ROI 裁剪
-- 支持可选自动抓屏频率调节
-- 支持可选平滑处理
-- 支持 Web UI 配置、状态与日志面板
-- 支持 JSON 配置持久化
-
-## 系统流程
-
-```mermaid
-flowchart LR
-    A["屏幕 / 显示器"] --> B["dxcam 采集"]
-    B --> C["共享内存缓冲区"]
-    C --> D["推理进程"]
-    D --> E["检测框 / 关键点结果"]
-    E --> F["透明悬浮层渲染"]
-    E --> G["性能指标与日志"]
-    E --> H["可选截图保存"]
-```
-
-## 前后端交互流程
-
-```mermaid
-flowchart TD
-    UI["Web 界面"] --> API["FastAPI 服务"]
-    API --> CFG["config/app_config.json"]
-    API --> PM["进程管理器"]
-    PM --> RUN["python -m cvcap --config ..."]
-    RUN --> CAP["采集"]
-    RUN --> INF["推理"]
-    RUN --> OVL["叠加渲染"]
-    RUN --> LOG["运行日志"]
-    LOG --> API
-    API --> UI
-```
-
-## 架构分层说明
-
-```mermaid
-flowchart TB
-    subgraph UI["界面层"]
-        WEB["Web 面板"]
-        CLI["命令行入口"]
-    end
-
-    subgraph APP["应用层"]
-        RUNTIME["运行时编排"]
-    end
-
-    subgraph CORE["核心层"]
-        CONFIG["配置 / 类型 / 错误"]
-    end
-
-    subgraph ADAPTERS["适配器层"]
-        CAP["dxcam 采集适配器"]
-        DET["YOLO / TensorRT 推理适配器"]
-    end
-
-    subgraph RUNTIME2["运行时服务层"]
-        SHM["共享缓冲"]
-        OVL["透明悬浮层"]
-        SMOOTH["平滑模块"]
-        SAVE["截图保存"]
-        METRIC["指标 / 日志"]
-    end
-
-    WEB --> RUNTIME
-    CLI --> RUNTIME
-    RUNTIME --> CONFIG
-    RUNTIME --> CAP
-    RUNTIME --> DET
-    RUNTIME --> SHM
-    RUNTIME --> OVL
-    RUNTIME --> SMOOTH
-    RUNTIME --> SAVE
-    RUNTIME --> METRIC
-```
-
-## 项目结构
-
-```text
-cv_capture_detect_v12/
-|-- cvcap/                        # 根包 shim，确保可直接在项目根目录运行 `python -m cvcap`
-|-- config/
-|-- |-- app_config.json           # 持久化运行配置
-|-- media/                        # README 展示素材
-|-- models/                       # .pt / .onnx / .engine 模型文件
-|-- src/
-|-- |-- cvcap/
-|-- |-- |-- app/
-|-- |-- |-- |-- cli.py            # 命令行参数与启动入口
-|-- |-- |-- |-- runtime.py        # 主流程编排
-|-- |-- |-- core/
-|-- |-- |-- |-- config.py         # RunnerArgs
-|-- |-- |-- |-- config_store.py   # 配置读写
-|-- |-- |-- |-- detections.py     # 检测结果数据结构
-|-- |-- |-- |-- errors.py         # 运行时错误类型
-|-- |-- |-- adapters/
-|-- |-- |-- |-- capture/
-|-- |-- |-- |-- |-- dxcam_capture.py
-|-- |-- |-- |-- inference/
-|-- |-- |-- |-- |-- ultralytics_detector.py
-|-- |-- |-- runtime/
-|-- |-- |-- |-- shared_buffer.py
-|-- |-- |-- |-- overlay.py
-|-- |-- |-- |-- drawing.py
-|-- |-- |-- |-- smoothing.py
-|-- |-- |-- |-- metrics.py
-|-- |-- |-- |-- saving.py
-|-- |-- |-- |-- logging_jsonl.py
-|-- |-- |-- web/
-|-- |-- |-- |-- server.py
-|-- |-- |-- |-- process_manager.py
-|-- |-- |-- |-- forms.py
-|-- |-- |-- |-- static/
-|-- |-- |-- |-- |-- index.html
-|-- |-- |-- |-- |-- styles.css
-|-- |-- |-- |-- |-- app.js
-|-- |-- |-- __main__.py
-|-- tools/
-|-- |-- test_capture_frame.py
-```
-
-## 环境要求
-
-推荐环境：
-
-```bash
-conda activate cvcap
-```
-
-建议满足以下条件：
-
-- Windows 桌面环境
-- Python 3.10
-- 可正常使用 `dxcam`
-- 已安装 PyTorch / Ultralytics / PyQt5 / FastAPI 等依赖
-- 本地存在可用模型文件
-- 如使用 `.engine`，需有匹配的 TensorRT 环境
-
-## 快速开始
-
-### 1. 安装依赖
-
-优先使用项目当前整理过的核心依赖：
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. 获取 YOLO pose 模型
-
-对第一次接触这个项目的人来说，最容易上手的方式是先使用 Ultralytics 官方 pose 模型，再导出为 `.engine`。
-
-官方参考资料：
-
-- [Ultralytics Pose 文档](https://docs.ultralytics.com/tasks/pose/)
-- [Ultralytics YOLO26 文档](https://docs.ultralytics.com/models/yolo26/)
-- [Ultralytics Export 文档](https://docs.ultralytics.com/modes/export/)
-- [Ultralytics 官方 assets releases](https://github.com/ultralytics/assets/releases)
-
-根据官方文档，Ultralytics 的 pose 模型在首次使用时可以自动从官方 assets release 下载。因此你可以这样做：
-
-```bash
-# 方式 A：首次调用时自动下载
-python -c "from ultralytics import YOLO; YOLO('yolo26l-pose.pt')"
-
-# 方式 B：从官方 assets release 页面手动下载 .pt
-# 然后放到 models/ 目录下
-```
-
-推荐在本项目中使用这个命名：
-
-```text
-models/yolo26l-pose.pt
-```
-
-### 3. 将 `.pt` 导出为 TensorRT `.engine`
-
-如果你的目标是降低推理延迟，并且本机 NVIDIA / CUDA / TensorRT 环境已经配置好，可以把 `.pt` 导出成 `.engine`。
-
-一个适合本项目的典型导出方式如下：
-
-```bash
-python -c "from ultralytics import YOLO; YOLO('models/yolo26l-pose.pt').export(format='engine', imgsz=736, half=True, device=0)"
-```
-
-导出成功后，把结果放在：
-
-```text
-models/yolo26l-pose.engine
-```
-
-注意：
-
-- 导出 `.engine` 需要可用的 NVIDIA CUDA + TensorRT 环境
-- `.engine` 文件通常和导出时的 GPU、CUDA、TensorRT 版本相关
-- 更换显卡、CUDA、TensorRT 或驱动后，往往需要重新导出
-
-### 4. 命令行运行
-
-```bash
-python -m cvcap
-```
-
-常见示例：
-
-```bash
-python -m cvcap --vis
-python -m cvcap --capture-hz 120 --roi-square
-python -m cvcap --auto-capture --target-drop-fps 4.0
-python -m cvcap --smooth --smooth-alpha 0.6
-```
-
-### 5. Web 面板运行
-
-```bash
-python -m cvcap.web --port 8772 --no-open
-```
-
-然后在浏览器中打开：
-
-```text
-http://127.0.0.1:8772
-```
-
-你可以在面板中完成这些操作：
-
-- 修改运行参数
-- 保存到 `config/app_config.json`
-- 一键启动与停止
-- 查看当前运行状态
-- 查看解析后的日志与性能图表
-- 切换中英文界面
-
-## 日志解析与可视化
-
-VisionTrace 不是简单地把运行日志原样塞进前端页面。
-
-前端会解析这类性能日志：
-
-```text
-FLOW: Grab=120.8 Proc=118.8 Drop=2.0 Cmd=120.0Hz | TIME(ms): Wait=1.1 + Total=7.1 (Pre=1.6 GPU=4.6 Post=0.6 Ovhd=0.3)
-```
-
-然后自动提取指标，转成动态图表：
-
-- `Latency`：展示 `Wait`、`Total`、`Pre`、`GPU`、`Post`、`Ovhd`
-- `Throughput`：展示 `Grab FPS`、`Proc FPS`、`Cmd Hz`
-- `Drop FPS`：单独展示掉帧趋势，避免和其他 FPS 混在一张图里
-
-当前前端的设计重点：
-
-- `FLOW` 性能日志解析后不再重复堆积到纯文本区域
-- 文本日志区只保留非 `FLOW` 日志
-- 文本日志区有固定高度和滚动条，长时间运行不会把整页撑爆
-- 图表使用动态纵坐标，会根据最近一段时间的波动自动调整比例尺
-- 纵坐标不会低于 `0`
-- 横坐标保持固定样本窗口，方便连续比较趋势
-
-## 默认配置
-
-- 默认模型：`models/yolo26l-pose.engine`
-- 默认推理路径：YOLO26 end-to-end / NMS-free
-- 默认类别过滤：`0`，即只识别人
-- 运行参数会持久化到 `config/app_config.json`
-
-## 关键参数说明
-
-| 参数 | 作用 |
-|---|---|
-| `capture_hz` | 目标抓屏频率 |
-| `model` | 使用的模型文件 |
-| `device` | 推理设备，如 `cuda:0` |
-| `visualize` | 是否显示透明悬浮层 |
-| `max_run_seconds` | 最大运行时长，`0` 表示持续运行 |
-| `conf` | 检测置信度阈值 |
-| `iou` | NMS 的 IoU 阈值 |
-| `imgsz` | 推理输入尺寸 |
-| `yolo_classes` | 类别过滤，默认 `0` 为人物 |
-| `roi_square` | 是否启用中心 ROI |
-| `roi_radius_px` | ROI 半径 |
-| `auto_capture` | 是否启用自动调速 |
-| `smooth` | 是否启用平滑 |
-
-## 推荐的第一次运行流程
-
-如果一个人第一次在 GitHub 上看到这个项目，最建议他按下面这个顺序走：
-
-1. 准备 Windows + Python 3.10 环境
-2. 安装 `requirements.txt` 中的依赖
-3. 从官方 Ultralytics 来源获取 `yolo26l-pose.pt`
-4. 如果本机具备 TensorRT 环境，再导出成 `models/yolo26l-pose.engine`
-5. 启动 Web 面板 `python -m cvcap.web --port 8772 --no-open`
-6. 在浏览器里检查配置并先跑通可视化
-7. 先用 `.pt` 跑通，再切换 `.engine` 做低延迟优化
-
-## ROI 使用建议
-
-适合开启 ROI 的场景：
-
-- 主要关注屏幕中心区域
-- 希望尽量降低推理负担
-- 需要更高的局部响应速度
-
-适合关闭 ROI 的场景：
-
-- 需要完整画面上下文
-- 目标可能出现在屏幕边缘
-- 更关注覆盖范围而不是极限低延迟
-
-## 性能调优建议
-
-- `Wait` 时间高：通常说明采集供帧跟不上
-- `GPU` 时间高：通常说明推理是瓶颈
-- `Ovhd` 时间高：通常说明 Python 调度或系统后台负载偏高
-- ROI 开启后通常更容易获得稳定的高帧率
-- 如果只是人物场景，保持 `yolo_classes=0` 能减少无关框
-
-## 已知注意事项
-
-- 若 `dxcam` 报权限或访问失败，通常是当前 Windows 会话不允许 Desktop Duplication
-- 若 `.engine` 无法加载，请检查 TensorRT 版本与导出环境是否匹配
-- 若某个 `.pt` 权重损坏，Ultralytics 会在模型加载阶段直接报错
-- 若设置了 `max_run_seconds > 0`，程序会按配置自动停止，这不是崩溃
-
-## 适用场景
-
-- 本地实时视觉检测实验
-- 屏幕人体目标感知
-- 姿态推理验证
-- 低延迟采集 / 推理管线研究
-- 交互式参数调优与性能分析
-
-## 输出目录
-
-- `config/`：持久化配置
-- `debug/`：调试日志
-- `models/`：模型文件
-- `media/`：README 展示素材
-
-## 许可证
-
-本仓库使用自定义非商用许可证，见 [LICENSE](LICENSE)。
-
-这意味着：
-
-- 可以阅读、修改、分发源码
-- 默认禁止商业使用
-- 若需商业用途，应单独获得授权
-
-## 免责声明
-
-本项目定位为计算机视觉基础设施与实时处理实验项目，适用于研究、监测、演示与工程验证。请勿将其用于作弊、恶意软件或其他违反软件规则与法律法规的用途。
+VisionTrace is intended for computer vision engineering, local monitoring, experimentation, demos, dataset work, and research. Follow applicable laws, platform rules, and authorization requirements in your environment.

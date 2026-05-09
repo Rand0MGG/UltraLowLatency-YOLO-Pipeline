@@ -13,10 +13,9 @@ from cvcap.runtime.drawing import draw_boxes
 
 
 class AsyncSaver:
-    def __init__(self, save_queue_size: int, roi_square: bool):
+    def __init__(self, save_queue_size: int):
         self._queue = queue.Queue(maxsize=save_queue_size)
         self._stop_event = threading.Event()
-        self._roi_square = roi_square
         self._thread = threading.Thread(target=self._worker_loop, name="AsyncSaver", daemon=True)
         self._thread.start()
 
@@ -37,7 +36,8 @@ class AsyncSaver:
                 frame_raw, boxes, roi_param, path = self._queue.get(timeout=0.2)
                 visualized = draw_boxes(frame_raw, boxes, roi_square=roi_param)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(path), visualized)
+                if not cv2.imwrite(str(path), visualized):
+                    raise ValueError(f"Could not write annotated frame: {path}")
             except queue.Empty:
                 continue
             except Exception as exc:

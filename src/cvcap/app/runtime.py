@@ -86,7 +86,7 @@ def inference_process_target(
         )
         buffer = SharedTripleBuffer(shape=frame_shape, name=shm_name, create=False)
         json_logger = JsonlLogger(Path("debug") / "yolo_log.jsonl") if args.jsonl_log else None
-        saver = AsyncSaver(save_queue_size=args.save_queue, roi_square=args.roi_square) if args.save_every > 0 else None
+        saver = AsyncSaver(save_queue_size=args.save_queue) if args.demo_capture else None
         auto_labeler = (
             AutoLabeler(
                 output_dir=Path(args.auto_label_dir),
@@ -120,7 +120,7 @@ def inference_process_target(
         init_status_queue.put({"ok": True, "message": f"Loaded model: {args.model}"})
         model_ready_evt.set()
 
-        last_save_t = 0.0
+        last_demo_save_t = 0.0
         previous_end = time.perf_counter()
         while not stop_evt.is_set():
             payload = buffer.get(lock, cond, timeout=0.5)
@@ -143,6 +143,8 @@ def inference_process_target(
                 boxes = _offset_boxes(boxes, offset_x, offset_y)
             if smoother is not None:
                 boxes = smoother.update(boxes)
+            capture_boxes = _offset_boxes(boxes, -offset_x, -offset_y) if (offset_x > 0 or offset_y > 0) and boxes else boxes
+            capture_roi_param = _capture_roi_param(frame_bgr) if args.roi_square else None
 
             roi_param = None
             if args.roi_square:
@@ -174,14 +176,15 @@ def inference_process_target(
                     )
                 )
 
-            if args.save_every > 0:
+            if args.demo_capture and (capture_boxes or not args.demo_capture_require_boxes):
                 now = time.perf_counter()
-                if now - last_save_t >= float(args.save_every):
-                    last_save_t = now
+                interval_s = max(0.1, float(args.demo_capture_interval_s))
+                if now - last_demo_save_t >= interval_s:
+                    last_demo_save_t = now
                     stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-                    out_path = Path("debug") / "yolo_samples" / f"sample_{stamp}_{int(now * 1000) % 1000:03d}.jpg"
+                    out_path = Path(args.demo_capture_dir) / f"demo_{stamp}_{int(now * 1000) % 1000:03d}.jpg"
                     if saver is not None:
-                        saver.push(frame_bgr.copy(), boxes, roi_param, out_path)
+                        saver.push(frame_bgr.copy(), capture_boxes, capture_roi_param, out_path)
 
             end = time.perf_counter()
             stats.update(
@@ -438,6 +441,11 @@ def _offset_boxes(boxes, offset_x: int, offset_y: int):
             )
         )
     return shifted
+
+
+def _capture_roi_param(frame_bgr: np.ndarray):
+    frame_h, frame_w = frame_bgr.shape[:2]
+    return (frame_w // 2, frame_h // 2, min(frame_w, frame_h) // 2)
 
 
 def _auto_label_input(frame_bgr: np.ndarray, boxes, args: RunnerArgs):

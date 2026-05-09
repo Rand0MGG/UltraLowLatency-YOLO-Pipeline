@@ -265,8 +265,11 @@ def payload_to_config(payload: dict[str, Any]) -> RunnerArgs:
         base["end2end"] = bool(base["end2end"])
         base["yolo_classes"] = normalize_yolo_classes(base["yolo_classes"])
         base["yolo_max_det"] = int(base["yolo_max_det"])
-        base["save_every"] = float(base["save_every"])
         base["save_queue"] = int(base["save_queue"])
+        base["demo_capture"] = bool(base["demo_capture"])
+        base["demo_capture_dir"] = str(base["demo_capture_dir"])
+        base["demo_capture_interval_s"] = max(0.1, float(base["demo_capture_interval_s"]))
+        base["demo_capture_require_boxes"] = bool(base["demo_capture_require_boxes"])
         base["stats_interval"] = float(base["stats_interval"])
         base["max_run_seconds"] = float(base["max_run_seconds"])
         base["auto_label"] = bool(base["auto_label"])
@@ -558,10 +561,12 @@ def config_to_cli_args(config: RunnerArgs) -> list[str]:
         "--imgsz", str(config.imgsz),
         "--end2end" if config.end2end else "--no-end2end",
         "--yolo-max-det", str(config.yolo_max_det),
-        "--save-every", str(config.save_every),
         "--stats-interval", str(config.stats_interval),
         "--max-run-seconds", str(config.max_run_seconds),
         "--save-queue", str(config.save_queue),
+        "--demo-capture-dir", config.demo_capture_dir,
+        "--demo-capture-interval-s", str(config.demo_capture_interval_s),
+        "--demo-capture-require-boxes" if config.demo_capture_require_boxes else "--no-demo-capture-require-boxes",
         "--auto-label-dir", config.auto_label_dir,
         "--auto-label-incomplete-prob", str(config.auto_label_incomplete_prob),
         "--auto-label-both-prob", str(config.auto_label_both_prob),
@@ -597,6 +602,7 @@ def config_to_cli_args(config: RunnerArgs) -> list[str]:
         args.append("--auto-capture")
     if config.auto_label:
         args.append("--auto-label")
+    args.append("--demo-capture" if config.demo_capture else "--no-demo-capture")
     args.append("--auto-label-incomplete-enabled" if config.auto_label_incomplete_enabled else "--no-auto-label-incomplete-enabled")
     args.append("--auto-label-complete-enabled" if config.auto_label_complete_enabled else "--no-auto-label-complete-enabled")
     args.append("--auto-label-empty-enabled" if config.auto_label_empty_enabled else "--no-auto-label-empty-enabled")
